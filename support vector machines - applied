@@ -1,0 +1,318 @@
+---
+title: "Applied"
+author: "Wiktor Lamch"
+date: "23 11 2019"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(ISLR)
+library(tidyverse)
+library(e1071)
+```
+
+
+# 4
+
+```{r}
+set.seed(1)
+
+transl <- 3
+
+X <- matrix(rnorm(100 * 2), ncol = 2)
+
+X[1:30, ] <- X[1:30, ] + transl
+
+X[31:60, ] <- X[31:60, ] - transl
+
+y <- c(rep(0, 60), rep(1, 40))
+
+dat <- data.frame(x = X, y = as.factor(y))
+
+plot(X, col = y + 3)
+```
+
+## Splitting data on train and test set
+
+```{r}
+index <- sample(nrow(dat), 0.7 * nrow(dat))
+
+train <- dat[index,]
+test <- dat[-index,]
+```
+
+
+## Svm with linear kernel
+
+```{r}
+svm.lin <- svm(data = train, y ~ ., kernel = "linear", cost = 1)
+plot(svm.lin, train)
+summary(svm.lin)
+```
+
+
+## Svm with polynomial kernel
+
+```{r}
+svm.poly <- svm(data = train, y ~ ., kernel = "polynomial", degree = 4, cost = 1)
+plot(svm.poly, train)
+summary(svm.poly)
+```
+
+## Svm with radial kernel
+
+```{r}
+svm.radial <- svm(data = train, y ~ ., kernel = "radial", gamma = 2, cost = 1)
+plot(svm.radial, train)
+summary(svm.radial)
+```
+
+
+## Train test for svm with linear kernel
+
+```{r}
+table <- table(real = train$y, pred = predict(svm.lin, train))
+
+table
+
+1 - sum(diag(table)) / sum(table)
+```
+
+
+
+## Train test for svm with polynomial kernel
+
+```{r}
+table <- table(real = train$y, pred = predict(svm.poly, train))
+
+table
+
+1 - sum(diag(table)) / sum(table)
+```
+
+## Train test for svm with radial kernel
+
+```{r}
+table <- table(real = train$y, pred = predict(svm.radial, train))
+
+table
+
+1 - sum(diag(table)) / sum(table)
+```
+
+
+## Test test for svm with linear kernel
+
+```{r}
+table <- table(real = test$y, pred = predict(svm.lin, test))
+
+table
+
+1 - sum(diag(table)) / sum(table)
+```
+
+
+## Test test for svm with polynomial kernel
+
+```{r}
+table <- table(real = test$y, pred = predict(svm.poly, test))
+
+table
+
+1 - sum(diag(table)) / sum(table)
+```
+
+
+
+## Test test for svm with radial kernel
+
+```{r}
+table <- table(real = test$y, pred = predict(svm.radial, test))
+
+table
+
+1 - sum(diag(table)) / sum(table)
+```
+
+
+# 5
+
+## a
+
+```{r}
+x1 = runif(1000) - 0.5
+x2 = runif(1000) - 0.5
+y = 1 * (x1^2 - x2^2 > 0)
+
+dat = tibble(x1 = x1, x2 = x2, y = as.factor(y))
+```
+
+## b
+
+```{r}
+plot(x1, x2, col = y + 1)
+```
+
+
+## c, d, e, f
+
+```{r}
+model.reglog <- glm(data = dat, y ~ ., family = "binomial")
+
+pred <- ifelse(predict(model.reglog, dat, type = "response") > 0.5, 1, 0)
+
+plot(x1, x2, col = pred + 1)
+```
+
+
+
+```{r}
+model.reglog <- glm(data = dat, y ~ I(x1^2) + x2, family = "binomial")
+
+pred <- ifelse(predict(model.reglog, dat, type = "response") > 0.5, 1, 0)
+
+plot(x1, x2, col = pred + 1)
+```
+
+```{r}
+model.reglog <- glm(data = dat, y ~ x1 + I(x2^2), family = "binomial")
+
+pred <- ifelse(predict(model.reglog, dat, type = "response") > 0.5, 1, 0)
+
+plot(x1, x2, col = pred + 1)
+```
+
+
+```{r}
+model.reglog <- glm(data = dat, y ~ I(x1^2) + I(x2^2), family = "binomial")
+
+pred <- ifelse(predict(model.reglog, dat, type = "response") > 0.5, 1, 0)
+
+plot(x1, x2, col = pred + 1)
+```
+
+
+## g
+
+```{r}
+svm.poly <- svm(data = dat, y ~ ., kernel = "polynomial", cost = 0.1, degree = 2)
+
+plot(svm.poly, dat)
+
+pred <- predict(svm.poly, dat)
+
+plot(dat$x1, dat$x2, col = as.numeric(pred) + 1)
+
+```
+
+
+# 6
+
+## a
+
+```{r}
+set.seed(1)
+obs = 1000
+x1 <- runif(obs, min = -4, max = 4)
+x2 <- runif(obs, min = -1, max = 16)
+y <- ifelse(x2 > x1 ^ 2, 0, 1)
+dat <- data.frame(x1 = x1, x2 = x2, y = as.factor(y))
+
+index <- sample(nrow(dat), 0.7 * nrow(dat))
+
+train <- dat[index,]
+test <- dat[-index,]
+
+plot(dat$x1, dat$x2, col = as.numeric(dat$y) + 1, main = "all data")
+plot(train$x1, train$x2, col = as.numeric(train$y) + 1, main = "train data")
+plot(test$x1, test$x2, col = as.numeric(test$y) + 1, main = "test data")
+```
+
+
+## b
+
+```{r}
+svm.lin <- svm(data = train, y ~ ., kernel = "linear", cost = 0.1)
+summary(svm.lin)
+```
+
+```{r}
+tune.out = tune(svm, y ∼ ., data = dat, kernel = "linear", ranges = list(cost = c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
+
+summary(tune.out) -> output
+
+output
+```
+
+
+
+```{r}
+svm.lin.best <- tune.out$best.model
+summary(svm.lin.best)
+```
+
+
+```{r}
+
+cost.grid = c(0.001, 0.01, 0.1, 1, 5, 10, 100)
+
+for(cost in cost.grid){
+  svm.fit <- svm(y ~ ., data = train, kernel = 'linear', cost = cost)
+  
+  plot(svm.fit, data = train)
+}
+```
+
+
+
+# 7
+
+```{r}
+head(Auto)
+```
+
+## a
+
+```{r}
+data <- Auto %>% mutate(highmpg = as.factor(ifelse(mpg > median(mpg), 1, 0))) %>% select(-mpg)
+head(data)
+```
+
+
+## b
+
+```{r}
+tune.out = tune(svm, highmpg ∼ ., data = data, kernel = "linear",
+                ranges = list(cost = c(0.001, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 100, 1000)))
+
+summary(tune.out) -> output
+
+output
+```
+
+## c
+
+### Svm with radial kernel
+
+```{r}
+tune.out = tune(svm, highmpg ∼ ., data = data, kernel = "radial",
+                ranges = list(cost = c(0.001, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 100, 1000),
+                              gamma = c(0.01, 0.1, 0.05, 0.5, 1, 2, 3, 4, 5)))
+
+summary(tune.out) -> output
+
+output
+```
+
+
+### Svm with polynomial kernel
+
+```{r}
+tune.out = tune(svm, highmpg ∼ ., data = data, kernel = "polynomial",
+                ranges = list(cost = c(0.001, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 100, 1000),
+                              degree = c(1, 2, 3, 4, 5)))
+
+summary(tune.out) -> output
+
+output
+```
