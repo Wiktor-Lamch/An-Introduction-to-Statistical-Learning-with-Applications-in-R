@@ -1,0 +1,551 @@
+---
+title: "Applied"
+author: "Wiktor Lamch"
+date: "2 11 2019"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(ISLR)
+library(stats)
+library(boot)
+library(tidyverse)
+library(splines)
+library(gam)
+library(akima)
+library(modelr)
+library(GGally)
+library(MASS)
+library(ggthemes)
+
+```
+
+
+```{r}
+head(Wage, 3)
+```
+
+# 6.
+
+
+## a
+
+```{r}
+cv.mse <- vector(length = 15)
+
+for(i in 1:15){
+  model <- glm(data = Wage, wage ~ poly(age, i))
+  cv.glm(Wage, model, K = 50)$delta[1] -> cv.mse[i]
+}
+
+tibble(npoly = 1:15, cv.mse = cv.mse) %>% mutate(npoly = as.factor(npoly)) %>%
+  ggplot(aes(npoly, cv.mse))+
+  geom_point()
+```
+
+
+```{r}
+models <- list()
+
+for(i in 1:15){
+  models[[i]] <- lm(data = Wage, wage ~ poly(age, i))
+}
+
+anova(models[[1]], models[[2]], models[[3]], models[[4]], models[[5]],
+      models[[6]], models[[7]], models[[8]], models[[9]], models[[10]],
+      models[[11]], models[[12]], models[[13]], models[[14]], models[[15]])
+
+```
+
+
+## b
+
+```{r}
+cv.mse <- vector(length = 19)
+
+for(i in 2:20){
+  data <- Wage %>% mutate(age = cut(age, i))
+  
+  model <- glm(data = data, wage ~ age)
+  
+  cv.glm(data, model, K = 50)$delta[1] -> cv.mse[i-1]
+}
+
+tibble(nstep = 2:20, cv.mse = cv.mse) %>% mutate(nstep = as.factor(nstep)) %>%
+  ggplot(aes(nstep, cv.mse))+
+  geom_point()
+```
+
+
+```{r}
+model <- lm(data = Wage, wage ~ cut(age, 8))
+
+Wage %>% add_predictions(model) %>%
+  ggplot(aes(age, wage)) +
+  geom_point()+
+  geom_line(aes(y = pred), col = "red", lwd = 1.5)
+
+```
+
+
+# 7
+
+```{r}
+
+Wage %>% ggplot(aes(maritl, wage, fill = maritl))+
+  geom_boxplot()
+
+Wage %>% ggplot(aes(race, wage, fill = race))+
+  geom_boxplot()
+
+Wage %>% ggplot(aes(jobclass, wage, fill = jobclass))+
+  geom_boxplot()
+
+Wage %>% ggplot(aes(health, wage, fill = health))+
+  geom_boxplot()
+```
+
+```{r}
+
+Wage %>% ggplot(aes(wage))+
+  geom_freqpoly()+
+  facet_grid(. ~ maritl)
+
+Wage %>% ggplot(aes(wage))+
+  geom_freqpoly()+
+  facet_grid(. ~ race)
+
+Wage %>% ggplot(aes(wage))+
+  geom_freqpoly()+
+  facet_grid(. ~ jobclass)
+
+Wage %>% ggplot(aes(wage))+
+  geom_freqpoly()+
+  facet_grid(. ~ health)
+```
+
+
+
+
+```{r}
+model <- lm(data = Wage[,-6], wage ~ .)
+
+summary(model)
+```
+
+
+```{r}
+model <- lm(data = Wage, wage ~ maritl)
+summary(model)
+```
+
+```{r}
+model <- lm(data = Wage, wage ~ race)
+summary(model)
+```
+
+
+```{r}
+model <- lm(data = Wage, wage ~ jobclass)
+summary(model)
+```
+
+```{r}
+model <- lm(data = Wage, wage ~ health)
+summary(model)
+```
+
+
+# 8
+
+```{r}
+head(Auto)
+```
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+Auto %>% select(-"name") %>% ggpairs()
+```
+
+```{r}
+data <- Auto %>% select(-"name")
+model <- lm(data = data, mpg ~ .)
+step(model)
+```
+
+```{r}
+model <- glm(formula = mpg ~ cylinders + displacement + horsepower + weight + 
+    year + origin, data = data)
+
+summary(model)
+```
+
+```{r}
+cv.model <- cv.glm(data = data, model)
+cv.model$delta[1]
+```
+
+```{r}
+model.gam <- glm(formula = mpg ~ ns(cylinders, 3) + ns(displacement, 3) + ns(horsepower, 2) + weight + 
+    year + origin, data = data)
+```
+
+
+```{r}
+cv.model.gam <- cv.glm(data = data, model.gam)
+cv.model.gam$delta[1]
+```
+
+```{r}
+mse.model <- vector(length = 1000)
+mse.model.gam <- vector(length = 1000)
+
+for(i in 1:1000){
+  train <- sample(nrow(data), 0.7 * nrow(data))
+  
+  model <- glm(formula = mpg ~ cylinders + displacement + horsepower + weight + 
+    year + origin, data = data[train,])
+  
+  model.gam <- glm(formula = mpg ~ ns(cylinders, 3) + ns(displacement, 3) + ns(horsepower, 2) + weight + 
+    year + origin, data = data[train,])
+  
+  mse.model[i] <- mean((data$mpg[-train] - predict(model, newdata = data[-train,]))^2)
+  mse.model.gam[i] <- mean((data$mpg[-train] - predict(model.gam, newdata = data[-train,]))^2)
+  
+}
+
+library(ggthemes)
+
+tibble(mse.model = mse.model, mse.model.gam = mse.model.gam) %>%
+  gather("var", "val", mse.model, mse.model.gam) %>%
+  ggplot(aes(var, val, fill = var))+
+  geom_boxplot()+
+  theme_excel_new()
+```
+
+
+
+```{r}
+Auto %>% ggplot(aes(horsepower, mpg))+
+  geom_point()+
+  theme_economist()
+```
+
+```{r}
+fit1 <- lm(data = Auto, mpg ~ horsepower)
+fit2 <- lm(data = Auto, mpg ~ poly(horsepower, 2))
+fit3 <- lm(data = Auto, mpg ~ poly(horsepower, 3))
+fit4 <- lm(data = Auto, mpg ~ poly(horsepower, 4))
+fit5 <- lm(data = Auto, mpg ~ poly(horsepower, 5))
+fit6 <- lm(data = Auto, mpg ~ poly(horsepower, 6))
+fit7 <- lm(data = Auto, mpg ~ poly(horsepower, 7))
+
+anova(fit1, fit2, fit3, fit4, fit5, fit6, fit7)
+```
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+Auto %>% add_predictions(fit2) %>% ggplot(aes(horsepower, mpg))+
+  geom_point()+
+  geom_smooth(se = F, span = 0.7)+
+  geom_line(aes(y = pred), col = "red", lwd = 1)+
+  theme_economist()
+```
+
+
+
+# 9
+
+
+```{r}
+Boston %>% ggplot(aes(nox, dis))+
+  geom_point()
+```
+
+```{r}
+fit1 <- lm(data = Boston, dis ~ poly(nox, 1))
+fit2 <- lm(data = Boston, dis ~ poly(nox, 2))
+fit3 <- lm(data = Boston, dis ~ poly(nox, 3))
+fit4 <- lm(data = Boston, dis ~ poly(nox, 4))
+fit5 <- lm(data = Boston, dis ~ poly(nox, 5))
+```
+
+
+```{r}
+Boston %>% add_predictions(fit1, "fit1") %>% add_predictions(fit2, "fit2") %>%
+  add_predictions(fit3, "fit3") %>% add_predictions(fit4, "fit4") %>% 
+  add_predictions(fit5, "fit5") %>%
+  ggplot(aes(nox, dis))+
+  geom_point()+
+  geom_line(aes(y = fit1), col = "black", lwd = 0.9)+
+  geom_line(aes(y = fit2), col = "red", lwd = 0.9)+
+  geom_line(aes(y = fit3), col = "yellow", lwd = 0.9)+
+  geom_line(aes(y = fit4), col = "green", lwd = 0.9)+
+  geom_line(aes(y = fit5), col = "purple", lwd = 0.9)+
+  theme_economist()
+```
+
+```{r}
+anova(fit1, fit2, fit3, fit4, fit5)
+```
+
+
+## a
+
+```{r}
+Boston %>% add_predictions(fit3, "fit3") %>%
+  ggplot(aes(nox, dis))+
+  geom_point()+
+  geom_line(aes(y = fit3), col = "red", lwd = 1)+
+  theme_economist()
+```
+
+
+```{r}
+summary(fit3)
+```
+
+
+## b, c
+
+
+```{r}
+cv.mse <- vector(length = 10)
+
+for(i in 1:10){
+  model <- glm(data = Boston, dis ~ poly(nox, i))
+  cv.mse[i] <- cv.glm(data = Boston, model)$delta[1]
+}
+
+tibble(npoly = 1:10, cv.mse = cv.mse) %>% ggplot(aes(npoly, cv.mse))+
+  geom_point()+
+  geom_line()
+```
+
+
+## d
+
+```{r}
+model.spline <- lm(data = Boston, dis ~ bs(nox, df = 4))
+
+Boston %>% add_predictions(model.spline) %>% ggplot(aes(nox, dis))+
+  geom_point()+
+  geom_line(aes(y = pred), col = "red", lwd = 1)+
+  theme_excel_new()
+
+```
+
+
+
+```{r}
+attr(bs(Boston$nox, df = 4), "knots")
+```
+
+
+## e, f
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+cv.mse <- vector(length = 17)
+
+for(i in 4:20){
+  model <- glm(data = Boston, dis ~ bs(nox, df = i))
+  cv.mse[i - 3] <- cv.glm(data = Boston, model, K = 20)$delta[1]
+}
+
+tibble(ndf = 4:20, cv.mse = cv.mse) %>% ggplot(aes(ndf, cv.mse))+
+  geom_point()+
+  geom_line()
+```
+
+
+```{r}
+model.spline <- lm(data = Boston, dis ~ bs(nox, df = 6))
+
+Boston %>% add_predictions(model.spline) %>% ggplot(aes(nox, dis))+
+  geom_point()+
+  geom_line(aes(y = pred), col = "red", lwd = 1)+
+  theme_excel_new()
+
+```
+
+
+```{r}
+attr(bs(Boston$nox, df = 6), "knots")
+```
+
+
+# 10
+
+```{r}
+head(College, 3)
+```
+
+## a, b, c
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+model <- lm(data = College, Outstate ~ .)
+step(model, direction = "both")
+```
+
+```{r}
+model.full <- lm(data = College, Outstate ~ .)
+
+model <- lm(formula = Outstate ~ Private + Apps + Accept + Enroll + Top10perc + 
+    F.Undergrad + Room.Board + Personal + PhD + Terminal + S.F.Ratio + 
+    perc.alumni + Expend + Grad.Rate, data = College)
+
+model.gam <- gam(formula = Outstate ~ Private + Apps + Accept + Enroll + lo(Top10perc, span = 0.6) + 
+    F.Undergrad + Room.Board + Personal + lo(PhD, span = 0.6) + lo(Terminal, span = 0.6) + S.F.Ratio + 
+    perc.alumni + lo(Expend, span = 0.6) + Grad.Rate, data = College)
+```
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+College %>% dplyr::select("Outstate", "Private", "Apps", "Accept", "Enroll", "Top10perc", "F.Undergrad",
+                   "Room.Board", "Personal", "PhD", "Terminal", "S.F.Ratio", "perc.alumni",
+                   "Expend", "Grad.Rate") %>% ggpairs()
+```
+
+
+```{r}
+cv.model.full <- vector(length = 1000)
+cv.model <- vector(length = 1000)
+cv.model.gam <- vector(length = 1000)
+
+for(i in 1:1000){
+  train <- sample(nrow(College), 0.7 * nrow(College))
+  
+  model.full <- lm(data = College[train,], Outstate ~ .)
+
+  model <- lm(formula = Outstate ~ Private + Apps + Accept + Enroll + Top10perc + 
+    F.Undergrad + Room.Board + Personal + PhD + Terminal + S.F.Ratio + 
+    perc.alumni + Expend + Grad.Rate, data = College[train,])
+  
+  model.gam <- gam(formula = Outstate ~ Private + Apps + Accept + Enroll + lo(Top10perc, span = 0.6) + 
+    F.Undergrad + Room.Board + Personal + lo(PhD, span = 0.6) + lo(Terminal, span = 0.6) + S.F.Ratio + 
+    perc.alumni + lo(Expend, span = 0.6) + Grad.Rate, data = College)
+  
+  cv.model.full[i] <- mean((College$Outstate[-train] - predict(model.full, College[-train,]))^2)
+  cv.model[i] <- mean((College$Outstate[-train] - predict(model, College[-train,]))^2)
+  cv.model.gam[i] <- mean((College$Outstate[-train] - as.numeric(predict(model.gam, College[-train,])))^2)
+
+}
+
+tibble(cv.model.full = cv.model.full, cv.model = cv.model, cv.model.gam) %>%
+  gather("var", "val", cv.model.full, cv.model, cv.model.gam) %>%
+  ggplot(aes(var, val, fill = var))+
+  geom_boxplot()
+```
+
+
+## d
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+for(i in c(1:8, 10:18)){
+  College %>%
+  ggplot(aes(Outstate, College[,i]))+
+    geom_point()+
+    geom_smooth(se = F)+
+    ylab(names(College)[i]) -> plot
+  
+  print(plot)
+}
+```
+
+# 11, 12
+
+## a
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+x1 <- rnorm(100, 7, 3)
+
+x2 <- rnorm(100, 5, 2)
+
+y <- 2.73 + 2.73 * x1 + 3.1 * x2 + rnorm(100, sd = 2)
+
+
+plot(x1, y)
+plot(x2, y)
+```
+
+
+## b, c
+
+```{r}
+beta1 <- 2.73 ; names(beta1) <- "x1"
+
+a = y - beta1 * x1
+
+beta2 = lm(a ∼ x2)$coef[2]
+
+beta1
+beta2
+```
+
+
+## d
+
+```{r}
+beta2 <- 3.1 ; names(beta2) <- "x2"
+
+a = y - beta2 * x2
+
+beta1 = lm(a ∼ x1)$coef[2]
+
+beta1
+beta2
+```
+
+
+## e1
+
+```{r}
+
+beta0 <- vector(length = 10000)
+beta1 <- vector(length = 10000)
+beta2 <- vector(length = 10000)
+
+for(i in 1:10000){
+beta1[i] <- rnorm(1, 2.73, 1)
+
+a = y - beta1[i] * x1
+
+beta2[i] = lm(a ∼ x2)$coef[2]
+beta0[i] = lm(a ~ x2)$coef[1]
+}
+
+tibble(beta0 = beta0, beta1 = beta1, beta2 = beta2) %>%
+  gather("coef", "value", beta0, beta1, beta2) %>%
+  ggplot(aes(coef, value, fill = coef))+
+  geom_boxplot()
+
+tibble(beta0 = beta0, beta1 = beta1, beta2 = beta2) %>%
+  summarize(beta0 = mean(beta0), beta1 = mean(beta1), beta2 = mean(beta2))
+```
+
+
+## e2
+
+```{r}
+beta0 <- vector(length = 10000)
+beta1 <- vector(length = 10000)
+beta2 <- vector(length = 10000)
+
+for(i in 1:10000){
+beta2[i] <- rnorm(1, 3.1, 1)
+
+a = y - beta2[i] * x2
+
+beta1[i] = lm(a ∼ x1)$coef[2]
+beta0[i] = lm(a ~ x1)$coef[1]
+}
+
+tibble(beta0 = beta0, beta1 = beta1, beta2 = beta2) %>%
+  gather("coef", "value", beta0, beta1, beta2) %>%
+  ggplot(aes(coef, value, fill = coef))+
+  geom_boxplot()
+
+tibble(beta0 = beta0, beta1 = beta1, beta2 = beta2) %>%
+  summarize(beta0 = mean(beta0), beta1 = mean(beta1), beta2 = mean(beta2))
+```
