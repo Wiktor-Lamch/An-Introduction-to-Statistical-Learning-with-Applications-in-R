@@ -1,0 +1,282 @@
+---
+title: "Applied"
+author: "Wiktor Lamch"
+date: "24 11 2019"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(ISLR)
+library(tidyverse)
+```
+
+# 7.
+
+
+```{r}
+head(USArrests)
+```
+
+
+```{r}
+dsc <- scale(USArrests)
+d1 <- dist(dsc)^2
+d2 <- as.dist(1 - cor(t(dsc)))
+summary(d2 / d1)
+```
+
+
+# 8
+
+```{r}
+standard.data <- scale(USArrests)
+head(standard.data)
+```
+
+
+## a
+
+```{r}
+pc.out <- prcomp(standard.data, scale = T)
+pc.var <- pc.out$sdev^2
+
+pve <- pc.var / sum(pc.var)
+pve
+```
+
+```{r}
+plot(1:4, cumsum(pve), xlab = "Principal component", 
+     ylab = "Cumulative variance explain", type = "b", ylim = c(0, 1))
+```
+
+## b
+
+```{r}
+loadings <- pc.out$rotation
+sumvar <- sum(apply(as.matrix(standard.data)^2, 2, sum))
+apply((as.matrix(standard.data) %*% loadings)^2, 2, sum) / sumvar
+```
+
+
+# 9
+
+```{r}
+apply(USArrests, 2, mean)
+apply(USArrests, 2, var)
+```
+
+### Due to high differences in mean and variance between variables we will consider standarized dataset.
+
+
+
+```{r}
+head(standard.data)
+```
+
+## a
+
+```{r}
+hc.out <- hclust(dist(standard.data), method = "complete")
+
+plot(hc.out)
+```
+
+```{r}
+
+as.data.frame(standard.data) %>% mutate(state = rownames(standard.data)) %>% 
+  ggplot(aes(Murder, Assault))+
+  geom_jitter()+
+  geom_text(aes(label = state), col = cutree(hc.out, 2))+
+  ggtitle(label = "Two clusters")
+```
+
+## b
+
+```{r}
+tibble(state = rownames(standard.data), cluster = cutree(hc.out, 3))
+```
+
+```{r}
+as.data.frame(standard.data) %>% mutate(state = rownames(standard.data)) %>% 
+  ggplot(aes(Murder, Assault))+
+  geom_jitter()+
+  geom_text(aes(label = state), col = cutree(hc.out, 3))+
+  ggtitle(label = "Three clusters")
+```
+
+
+## d
+
+```{r}
+hc.out.unscaled <- hclust(dist(USArrests), method = "complete")
+
+par(mfrow = c(1,2))
+plot(hc.out, main = "scaled")
+plot(hc.out.unscaled, main = "unscaled")
+```
+
+
+# 10
+
+## a
+
+```{r}
+set.seed(2)
+x <- matrix(rnorm(20 * 3 * 50, mean = 0, sd = 0.001), ncol = 50)
+x[1:20, 2] <- 1
+x[21:40, 1] <- 2
+x[21:40, 2] <- 2
+x[41:60, 1] <- 1
+true.labels <- c(rep(1, 20), rep(2, 20), rep(3, 20))
+```
+
+
+## b
+
+```{r}
+pr.out <- prcomp(x)
+plot(pr.out$x[, 1:2], col = 1:3, xlab = "Z1", ylab = "Z2", pch = 19)
+```
+
+## c
+
+```{r}
+km.out <- kmeans(x, 3, nstart = 20)
+km.out$cluster -> clas
+
+which(clas == 3) -> three
+which(clas == 2) -> two
+which(clas == 1) -> one
+
+clas[three] = 1
+clas[two] = 3
+clas[one] = 2
+
+clas
+
+```
+
+```{r}
+true.labels
+```
+
+```{r}
+table(true.lab = true.labels, class = clas)
+```
+
+### Perfectly fitted
+
+## d
+
+```{r}
+kmeans(x, 2, nstart = 20)$cluster
+```
+
+```{R}
+table(true.lab = true.labels, kmeans(x, 2, nstart = 20)$cluster)
+```
+
+### One cluster was absorpted by other cluster
+
+## e
+
+```{r}
+kmeans(x, 4, nstart = 2)$cluster
+```
+
+
+```{R}
+table(true.lab = true.labels, kmeans(x, 4, nstart = 20)$cluster)
+```
+
+### First cluster was splitted into two cluster
+
+
+## f
+
+```{r}
+km.out <- kmeans(pr.out$x[, 1:2], 3, nstart = 20)
+table(true.labels, km.out$cluster)
+```
+
+
+## g
+
+```{r}
+km.out <- kmeans(scale(x), 3, nstart = 20)
+table(true.labels, km.out$cluster)
+```
+
+### Before scaling data we can see that classification perform worse than classification on unscaled data
+
+
+# 11
+
+
+### In this excercise we will use dataset call Ch10Ex11 from www.StatLearning.com website
+
+## a
+
+```{r}
+data <- read.csv(file.choose(), header = F)
+
+```
+
+
+## b
+
+### Instead of correlation we use agglomeration methods.
+
+### Complete method
+
+```{r}
+hc.out <- hclust(dist(data), method = "complete")
+
+plot(hc.out)
+```
+
+### Single method
+
+```{r}
+hc.out <- hclust(dist(data), method = "single")
+
+plot(hc.out)
+```
+
+
+
+### Average method
+
+```{r}
+hc.out <- hclust(dist(data), method = "average")
+
+plot(hc.out)
+```
+
+
+### Wadr.D2 method
+
+```{r}
+hc.out <- hclust(dist(data), method = "ward.D2")
+
+plot(hc.out)
+```
+
+
+## c
+
+```{r}
+dim(data)
+```
+
+```{r}
+prc.out <- prcomp(t(data))
+
+summaty(prc.out)
+```
+
+```{r}
+total.loadings <- apply(prc.out$rotation, 1, sum)
+indexes <- order(abs(total.loadings), decreasing = TRUE)
+indexes[1:10]
+```
