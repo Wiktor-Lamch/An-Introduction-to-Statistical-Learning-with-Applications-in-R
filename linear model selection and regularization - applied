@@ -1,0 +1,693 @@
+---
+title: "6.8 Exercises - Applied"
+output: html_document
+---
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(ISLR)
+library(tidyverse)
+library(MASS)
+library(stats)
+library(leaps)
+library(glmnet)
+library(boot)
+library(modelr)
+library(pls)
+library(Ecdat)
+library(pls)
+```
+
+
+# 8.
+
+## a
+
+```{r}
+set.seed(100)
+
+x <- rnorm(100, 2, 1)
+e <- rnorm(100, 0, 4)
+```
+
+
+## b
+
+```{r}
+# y <- 0.4 * x + 0.89 * x^2 + 0.15 * x^3 + e
+
+y <- 0.4 * x^7 + e # to point f
+```
+
+
+## c
+
+```{r}
+data <- data.frame(y = y, x1 = x, x2 = x^2, x3 = x^3,
+                   x4 = x^4, x5 = x^5, x6 = x^6,
+                   x7  =x^7, x8 = x^8, x9 = x^9,
+                   x10 = x^10)
+head(data)
+```
+
+```{r}
+regsubsets(data = data, y ~ ., nvmax = 10) -> best_models
+
+summary(best_models) -> summary
+
+summary
+
+names(summary(best_models))
+```
+
+```{r}
+stats <- tibble(model = 1:10, rss = summary$rss, rsq = summary$rsq,
+                adjr2 = summary$adjr2, cp = summary$cp, bic = summary$bic)
+
+stats %>% gather("var", "val", rss:bic) %>% mutate(var = as.factor(var)) %>%
+  ggplot(aes(model, val))+
+  geom_point()+
+  geom_line(aes(color = var))+
+  facet_wrap(~ var, scales = "free")
+```
+
+## Looking at adjustive R^2 the best is model with four variables give below.
+
+```{r}
+coef(best_models, 4)
+```
+
+### Compare this models using cross validation (LOOCV).
+
+```{r}
+models_predictors <- list()
+
+for(i in 1:10){
+  names(coef(best_models, i))[-1] -> models_predictors[[i]]
+}
+
+cv_stats <- vector(length = 10)
+
+for(i in 1:10){
+
+  dataset <- data[,colnames(data) %in% c("y", models_predictors[[3]])]
+  
+ cv_stats[i] <- cv.glm(data = dataset, glm(y ~ ., data = dataset))$delta[1]
+ 
+}
+
+which.min(cv_stats)
+models_predictors[[which.min(cv_stats)]]
+cv_stats[which.min(cv_stats)]
+
+```
+
+### summary of this model is give below
+
+```{r}
+summary(lm(y ~ ., data = data[,colnames(data) %in% c("y", models_predictors[[which.min(cv_stats)]])]))
+```
+
+# d - is identical procedure like in best subsets selection method (regsubsets without method parameter)
+
+# e
+
+```{r}
+grid <- 10^seq(10, -2, length.out = 100)
+
+x_vars <- model.matrix(y ~ ., data = data)
+
+lasso.mod <- glmnet(x_vars, y, alpha=1, lambda = grid)
+
+plot(lasso.mod)
+```
+
+```{r}
+train <- sample(c(T, F), 100, replace = T)
+cv.out = cv.glmnet(x_vars[train,], y[train], alpha=1)
+plot(cv.out$lambda, cv.out$cvm)
+```
+
+
+
+
+```{r}
+mse <- vector(length = 500)
+
+for(i in 1:500){
+train <- sample(c(T, F), 100, replace = T)
+
+cv.out = cv.glmnet(x_vars[train,], y[train], alpha=1)
+
+bestlam = cv.out$lambda.min
+
+lasso.pred=predict(lasso.mod, s = bestlam, newx = x_vars[!train,])
+
+mean((lasso.pred - y[!train])^2) -> mse[i]
+}
+
+boxplot(mse)
+mean(mse)
+median(mse)
+```
+
+
+```{r}
+glmnet(x_vars, y, alpha=1, lambda = bestlam) -> best_lasso
+
+best_lasso$beta
+```
+
+
+# 9. 
+
+
+```{r}
+head(College)
+```
+
+## a
+
+```{r}
+n <- nrow(College)
+
+split <- sample(n, 0.7 * n)
+
+train <- College[split,]
+test <- College[-split,]
+
+nrow(train)
+nrow(test)
+```
+
+## b
+
+```{r}
+linear.model <- lm(data = train, Apps ~ .)
+summary(linear.model)
+
+test %>% add_residuals(linear.model) %>% 
+  summarise(mse = mean(resid^2))
+```
+
+
+## c
+
+```{r}
+y <- College$Apps
+x <- model.matrix(data = College, Apps ~ .)[,-1]
+
+grid <- 10^seq(10, -2, length.out = 1000)
+
+ridge.mod=glmnet(x[split,], y[split], alpha=0, lambda =grid)
+
+cv.out=cv.glmnet(x[split,], y[split], alpha=0)
+
+bestlamr =cv.out$lambda.min
+ridge.pred=predict(ridge.mod, s=bestlamr, newx=x[-split,])
+mean((ridge.pred - y[-split])^2)
+
+predict(ridge.mod ,type = "coefficients", s= bestlamr)[1:ncol(x),]
+```
+
+
+## d
+
+```{r}
+
+lasso.mod=glmnet(x[split,], y[split], alpha=1, lambda =grid)
+
+cv.out=cv.glmnet(x[split,], y[split], alpha=1)
+
+bestlaml =cv.out$lambda.min
+lasso.pred=predict(lasso.mod, s=bestlaml, newx=x[-split,])
+mean((lasso.pred - y[-split])^2)
+
+predict(lasso.mod ,type = "coefficients", s= bestlaml)[1:ncol(x),]
+
+```
+
+
+## e
+
+```{r}
+
+pcr.fit = pcr(Apps ~ ., data=College, scale=TRUE, subset = split, validation ="CV")
+
+summary(pcr.fit)
+
+validationplot(pcr.fit, val.type="MSEP")
+
+pcr.pred = predict(pcr.fit, x[-split,], ncomp = 5)
+
+mean((pcr.pred - y[-split])^2)
+```
+
+
+## f
+
+```{r}
+
+pls.fit = plsr(Apps ~ ., data=College, scale=TRUE, subset = split, validation ="CV")
+
+summary(pls.fit)
+
+validationplot(pls.fit, val.type="MSEP")
+
+pls.pred = predict(pls.fit, x[-split,], ncomp = 5)
+
+mean((pls.pred - y[-split])^2)
+```
+
+## g
+
+```{r}
+reglin <- test %>% add_residuals(linear.model) %>% summarise(mse = mean(resid^2)) %>% as.numeric()
+ridge <- mean((ridge.pred - y[-split])^2)
+lasso <- mean((lasso.pred - y[-split])^2)
+pcr <- mean((pcr.pred - y[-split])^2)
+pls <- mean((pls.pred - y[-split])^2)
+
+tibble(method = c("reglin", "ridge", "lasso", "pcr", "pls"),
+       mse = c(reglin, ridge, lasso, pcr, pls)) %>%
+  ggplot(aes(y = mse, x = method, fill = method))+
+  geom_col()
+```
+
+
+# 10
+
+
+## a
+
+```{r}
+data <- tibble(
+x1 = sample(1000, 1000, replace = T),
+x2 = sample(1000, 1000, replace = T),
+x3 = sample(1000, 1000, replace = T),
+x4 = sample(1000, 1000, replace = T),
+x5 = sample(1000, 1000, replace = T),
+x6 = sample(1000, 1000, replace = T),
+x7 = sample(1000, 1000, replace = T),
+x8 = sample(1000, 1000, replace = T),
+x9 = sample(1000, 1000, replace = T),
+x10 = sample(1000, 1000, replace = T),
+x11 = sample(1000, 1000, replace = T),
+x12 = sample(1000, 1000, replace = T),
+x13 = sample(1000, 1000, replace = T),
+x14 = sample(1000, 1000, replace = T),
+x15 = sample(1000, 1000, replace = T),
+x16 = sample(1000, 1000, replace = T),
+x17 = sample(1000, 1000, replace = T),
+x18 = sample(1000, 1000, replace = T),
+x19 = sample(1000, 1000, replace = T),
+x20 = sample(1000, 1000, replace = T)
+)
+
+beta <- seq(0, 1, length.out = 20)
+
+y <- as.matrix(data) %*% beta
+
+data$y <- y + rnorm(1000, 0, 1000)
+
+head(data)
+```
+
+
+```{r}
+summary(lm(data = data, y ~ .))
+```
+
+
+## b
+
+```{r}
+train <- sample(1000, 100)
+train
+```
+
+## c
+
+```{r}
+best.models <- regsubsets(data = data[train,], y ~ ., nvmax = 20)
+
+summary(best.models)
+```
+
+
+## c
+
+```{r}
+tibble(mod = 1:20, mse = summary(best.models)$rss / 100) %>%
+  ggplot(aes(mod, mse))+
+  geom_line()+
+  geom_point()
+```
+
+## d
+
+```{r}
+predictors <- list()
+
+test_mse <- vector(length = 20)
+
+for(i in 1:20){
+  predictors[[i]] <- names(coef(best.models, i))[-1]
+}
+
+for(i in 1:20){
+  model <- lm(data = data[train,c("y", predictors[[i]])], y ~ .)
+  test_mse[i] <- mean((data$y[-train] - predict(model, data[-train,]))^2)
+}
+
+tibble(mod = 1:20, test_mse = test_mse) %>%
+  ggplot(aes(mod, test_mse))+
+  geom_line()+
+  geom_point()
+
+which.min(test_mse)
+```
+
+
+```{r}
+tibble(mod = 1:20, diff_test_train_mse = test_mse - summary(best.models)$rss / 100) %>%
+  ggplot(aes(mod, diff_test_train_mse))+
+  geom_line()+
+  geom_point()
+```
+
+
+
+
+
+```{r}
+predictors <- list()
+
+cv_mse <- vector(length = 20)
+
+for(i in 1:20){
+  predictors[[i]] <- names(coef(best.models, i))[-1]
+}
+
+for(i in 1:20){
+  model <- glm(data = data[,c("y", predictors[[i]])], y ~ .)
+  cv_mse[i] <- cv.glm(data = data[,c("y", predictors[[i]])], model)$delta[1]
+}
+
+tibble(mod = 1:20, cv_mse = cv_mse) %>%
+  ggplot(aes(mod, cv_mse))+
+  geom_line()+
+  geom_point()
+
+which.min(cv_mse)
+```
+
+
+## f
+
+```{r}
+beta
+coef(lm(data = data, y ~ . - 1)) -> est_beta
+
+plot(beta, est_beta)
+```
+
+
+# 11
+
+```{r}
+head(Boston)
+```
+
+## a
+
+### best subset selection
+
+```{r}
+best.models <- regsubsets(data = Boston, crim ~ ., nvmax = ncol(Boston))
+
+predictors <- list()
+
+for(i in 1:13){
+
+names(coef(best.models, i))[-1] -> predictors[[i]]
+}
+
+LOOCV.mse <- vector(length = 13)
+five_fold.mse <- vector(length = 13)
+ten_fold.mse <- vector(length = 13)
+
+for(i in 1:13){
+  data = Boston[,c("crim", predictors[[i]])]
+  model <- glm(data = data, crim ~ .)
+  cv.glm(data, model)$delta[1] -> LOOCV.mse[i]
+  cv.glm(data, model, K = 10)$delta[1] -> ten_fold.mse[i]
+  cv.glm(data, model, K = 5)$delta[1] -> five_fold.mse[i]
+}
+
+
+mean.mse <- vector(length = 13)
+
+for(i in 1:13){
+  mean.mse[i] <- mean(c(LOOCV.mse[i], five_fold.mse[i], ten_fold.mse[i]))
+}
+
+tibble(npred = 1:13, LOOCV.mse = LOOCV.mse, ten_fold.mse = ten_fold.mse, five_fold.mse, mean.mse) %>%
+  gather("cv.type", "value", LOOCV.mse, ten_fold.mse, five_fold.mse, mean.mse) %>%
+  ggplot(aes(npred, value, color = cv.type))+
+  geom_point()+
+  geom_line()+
+  geom_vline(xintercept = which.min(mean.mse), col = "red", lwd = 1)
+
+```
+
+```{r}
+data = Boston[,c("crim", predictors[[which.min(mean.mse)]])]
+model <- lm(data = data, crim ~ .)
+summary(model)
+
+```
+
+
+```{r}
+mse <- vector(length = 5000)
+
+for(i in 1:5000){
+  train <- sample(nrow(Boston), 0.7 * nrow(Boston))
+  
+  model <- lm(data = Boston[train, c("crim", predictors[[which.min(mean.mse)]])], crim ~ .)
+  
+  pred = predict(model, Boston[-train,])
+  mean((pred - Boston$crim[-train])^2) -> mse[i]
+}
+
+tibble(mse = mse) %>% ggplot(aes(mse))+
+  geom_histogram(col = "white", bins = 100)+
+  geom_vline(xintercept = mean(mse), col = "red", lwd = 1)+
+  geom_vline(xintercept = median(mse), col = "green", lwd = 1)
+
+mean(mse)
+median(mse)
+```
+
+
+### ridge regression
+
+```{r}
+y <- Boston$crim
+x <- model.matrix(data = Boston, crim ~ .)[,-1]
+
+grid = 10^seq(10, -10, length = 1000)
+
+ridge.mod = glmnet(x, y, alpha=0, lambda=grid)
+```
+
+
+```{r}
+
+bestlam <- vector(length = 1000)
+
+for(i in 1:1000){
+train <- sample(nrow(Boston), 0.7 * nrow(Boston))
+cv.out = cv.glmnet(x[train,], y[train], alpha = 0)
+bestlam[i] = cv.out$lambda.min
+}
+
+mode = density(bestlam)$x[density(bestlam)$y == max(density(bestlam)$y)]
+
+tibble(bestlam = bestlam) %>% ggplot(aes(x = bestlam, y = stat(density)))+
+  geom_histogram(col = "white", bins = 100)+
+  geom_vline(xintercept = mode, col = "red")
+
+mode -> thebestlam
+
+thebestlam
+```
+
+```{r}
+mse <- vector(length = 5000)
+
+for(i in 1:5000){
+  train <- sample(nrow(Boston), 0.7 * nrow(Boston))
+  
+  ridge.mod = glmnet(x[train,], y[train], alpha=0, lambda=grid)
+  
+  ridge.pred = predict(ridge.mod, s = thebestlam, newx = x[-train,])
+  mean((ridge.pred - y[-train])^2) -> mse[i]
+}
+
+tibble(mse = mse) %>% ggplot(aes(mse))+
+  geom_histogram(col = "white", bins = 100)+
+  geom_vline(xintercept = mean(mse), col = "red", lwd = 1)+
+  geom_vline(xintercept = median(mse), col = "green", lwd = 1)
+
+mean(mse)
+median(mse)
+
+```
+
+
+### lasso regression
+
+```{r}
+y <- Boston$crim
+x <- model.matrix(data = Boston, crim ~ .)[,-1]
+
+grid = 10^seq(10, -10, length = 1000)
+
+lasso.mod = glmnet(x, y, alpha=1, lambda=grid)
+```
+
+
+```{r}
+
+bestlam <- vector(length = 1000)
+
+for(i in 1:1000){
+train <- sample(nrow(Boston), 0.7 * nrow(Boston))
+cv.out = cv.glmnet(x[train,], y[train], alpha = 1)
+bestlam[i] = cv.out$lambda.min
+}
+
+mode = density(bestlam)$x[density(bestlam)$y == max(density(bestlam)$y)]
+
+tibble(bestlam = bestlam) %>% ggplot(aes(x = bestlam, y = stat(density)))+
+  geom_histogram(col = "white", bins = 100)+
+  geom_vline(xintercept = mode, col = "red")
+
+mode -> thebestlam
+
+thebestlam
+```
+
+```{r}
+mse <- vector(length = 5000)
+
+for(i in 1:5000){
+  train <- sample(nrow(Boston), 0.7 * nrow(Boston))
+  
+  lasso.mod = glmnet(x[train,], y[train], alpha = 1, lambda=grid)
+  
+  lasso.pred = predict(lasso.mod, s = thebestlam, newx = x[-train,])
+  mean((ridge.pred - y[-train])^2) -> mse[i]
+}
+
+tibble(mse = mse) %>% ggplot(aes(mse))+
+  geom_histogram(col = "white", bins = 100)+
+  geom_vline(xintercept = mean(mse), col = "red", lwd = 1)+
+  geom_vline(xintercept = median(mse), col = "green", lwd = 1)
+
+mean(mse)
+median(mse)
+
+```
+
+
+### principal component regression
+
+
+```{r}
+
+tab <- data.frame(ncomp = c(1:13), mse = c(1:13))
+
+mse <- data.frame(ncomp = c(0), mse = c(0))
+
+for(i in 1:1000){
+
+train <- sample(nrow(Boston), 0.7 * nrow(Boston))
+
+pcr.fit = pcr(crim ~ ., data = Boston, scale = TRUE, subset = train, validation = "CV")
+
+for(j in 1:13){  
+
+pcr.pred = predict(pcr.fit ,x[-train,], ncomp = j)
+mean((pcr.pred - y[-train])^2) -> tab[j,2]
+}
+mse <- rbind(mse, tab)
+}
+
+mse <- mse[-1,]
+
+head(mse)
+nrow(mse)
+```
+
+```{r}
+mse %>% mutate(ncomp = as.factor(ncomp)) %>% 
+  ggplot(aes(x = reorder(ncomp, mse, FUN = median), y = mse, fill = ncomp))+
+  geom_boxplot()
+
+mse %>% mutate(ncomp = as.factor(ncomp)) %>% filter(ncomp == 13) %>%
+  ggplot(aes(mse))+
+  geom_histogram(col = "white", bins = 100)+
+  geom_vline(xintercept = mean(mse[mse[,1] == 13,2]), col = "red", lwd = 1)+
+  geom_vline(xintercept = median(mse[mse[,1] == 13,2]), col = "green", lwd = 1)
+
+mean(mse[mse[,1] == 13,2])
+median(mse[mse[,1] == 13,2])
+```
+
+
+### partial least squares
+
+
+```{r}
+
+tab <- data.frame(ncomp = c(1:13), mse = c(1:13))
+
+mse <- data.frame(ncomp = c(0), mse = c(0))
+
+for(i in 1:1000){
+
+train <- sample(nrow(Boston), 0.7 * nrow(Boston))
+
+pls.fit = plsr(crim ~ ., data = Boston, scale = TRUE, subset = train, validation = "CV")
+
+for(j in 1:13){  
+
+pls.pred = predict(pls.fit ,x[-train,], ncomp = j)
+mean((pls.pred - y[-train])^2) -> tab[j,2]
+}
+mse <- rbind(mse, tab)
+}
+
+mse <- mse[-1,]
+
+head(mse)
+nrow(mse)
+```
+
+```{r}
+mse %>% mutate(ncomp = as.factor(ncomp)) %>% 
+  ggplot(aes(x = reorder(ncomp, mse, FUN = median), y = mse, fill = ncomp))+
+  geom_boxplot()
+
+mse %>% mutate(ncomp = as.factor(ncomp)) %>% filter(ncomp == 10) %>%
+  ggplot(aes(mse))+
+  geom_histogram(col = "white", bins = 100)+
+  geom_vline(xintercept = mean(mse[mse[,1] == 10,2]), col = "red", lwd = 1)+
+  geom_vline(xintercept = median(mse[mse[,1] == 10,2]), col = "green", lwd = 1)
+
+mean(mse[mse[,1] == 10,2])
+median(mse[mse[,1] == 10,2])
+```
