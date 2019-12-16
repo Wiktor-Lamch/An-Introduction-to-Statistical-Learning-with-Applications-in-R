@@ -1,0 +1,630 @@
+---
+title: "Applied"
+author: "Wiktor Lamch"
+date: "9 11 2019"
+output: html_document
+---
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(MASS)
+library(ISLR)
+library(tidyverse)
+library(randomForest)
+library(gbm)
+library(tree)
+library(splines)
+library(gam)
+library(class)
+```
+
+# 7
+
+```{r}
+head(Boston)
+```
+
+
+```{r}
+
+mse <- list()
+
+result <- vector(length = 10)
+
+for(i in 1:13){
+  
+  for(j in 1:10){
+  
+  train <- sample(nrow(Boston), 0.7 * nrow(Boston))
+    
+  model <- randomForest(medv ~ ., data = Boston, subset = train, mtry = i)
+  
+  pred <- predict(model, Boston[-train,])
+  
+  result[j] <- mean((Boston$medv[-train] - pred)^2)
+  
+  }
+  mse[[i]] <- result
+}
+
+
+tibble(mtry = as.factor(rep(1:13, each = 10)), mse = unlist(mse)) %>%
+ggplot(aes(mtry, mse, fill = mtry))+
+geom_boxplot()
+```
+
+
+```{r}
+train <- sample(nrow(Boston), 0.7 * nrow(Boston))
+
+
+mse <- vector(length = 500)
+
+for(i in 1:500){
+    
+  model <- randomForest(medv ~ ., data = Boston, subset = train, mtry = 6, ntree = i)
+  
+  pred <- predict(model, Boston[-train,])
+  
+  mse[i] <- mean((Boston$medv[-train] - pred)^2)
+  
+  }
+
+
+tibble(mtry = 1:500, mse = mse) %>%
+ggplot(aes(mtry, mse))+
+geom_line()
+```
+
+
+```{r}
+
+train <- sample(nrow(Boston), 0.7 * nrow(Boston))
+
+result <- list()
+
+mse <- vector(length = 300)
+
+for(j in 1:(ncol(Boston) - 1)){
+
+  
+for(i in 1:300){
+    
+  model <- randomForest(medv ~ ., data = Boston, subset = train, mtry = j, ntree = i)
+  
+  pred <- predict(model, Boston[-train,])
+  
+  mse[i] <- mean((Boston$medv[-train] - pred)^2)
+  
+}
+ 
+  result[[j]] <- mse
+}
+
+
+tibble(mtry = as.factor(rep(1:(ncol(Boston) - 1), each = 300)),
+       mse = unlist(result),
+       ntree = rep(1:300, 13)) %>%
+ggplot(aes(ntree, mse, color = mtry))+
+geom_line()
+```
+
+
+# 8
+
+
+```{r}
+head(Carseats)
+```
+
+
+## a, b
+
+```{r}
+model <- tree(Sales ~ ., data = Carseats)
+summary(model)
+plot(model)
+text(model, pretty = 0)
+```
+
+## c
+
+```{r}
+cv.model <- cv.tree(model)
+cv.model
+
+model.prune <- prune.tree(model, best = cv.model$size[which.min(cv.model$dev)])
+summary(model.prune)
+```
+
+
+```{r}
+plot(model.prune)
+text(model.prune, pretty = 0)
+```
+
+
+```{r}
+mse.model <- vector(length = 1000)
+mse.model.prune <- vector(length = 1000)
+
+for(i in 1:1000){
+  train <- sample(nrow(Carseats), 0.7 * nrow(Carseats))
+  
+  model <- tree(Sales ~ ., data = Carseats, subset = train)
+  
+  cv.tree(model) -> cv.model
+  
+  model.prune <- prune.tree(model, best = cv.model$size[which.min(cv.model$dev)])
+  
+  mse.model[i] <- mean((Carseats$Sales[-train] - predict(model, data = Carseats[-train,]))^2)
+  
+  mse.model.prune[i] <- mean((Carseats$Sales[-train] - predict(model.prune, data = Carseats[-train,]))^2)
+}
+
+tibble(mse.model = mse.model, mse.model.prune = mse.model.prune) %>%
+  gather("val", "var", mse.model, mse.model.prune) %>%
+  ggplot(aes(val, var, fill = val))+
+  geom_boxplot()
+
+mean(mse.model)
+median(mse.model)
+
+mean(mse.model.prune)
+median(mse.model.prune)
+```
+
+
+## d
+
+```{r}
+mse <- vector(length = 500)
+
+for(i in 1:500){
+  train <- sample(nrow(Carseats), 0.7 * nrow(Carseats))
+  
+  model.bag <- randomForest(Sales ~ ., data = Carseats, subset = train, mtry = 10)
+  
+  mse[i] <- mean((Carseats$Sales[-train] - predict(model.bag, data = Carseats[-train,]))^2)
+}
+
+tibble(mse = mse) %>%
+  ggplot(aes(y = mse, fill = "red"))+
+  geom_boxplot(show.legend = F)
+
+mean(mse)
+median(mse)
+```
+
+
+
+```{r}
+train <- sample(nrow(Carseats), 0.7 * nrow(Carseats))
+  
+model.bag <- randomForest(Sales ~ ., data = Carseats, subset = train, mtry = 10, importance = T)
+
+importance(model.bag)
+varImpPlot(model.bag)
+```
+
+
+
+
+## e
+
+```{r}
+mse <- vector(length = 500)
+
+for(i in 1:500){
+  train <- sample(nrow(Carseats), 0.7 * nrow(Carseats))
+  
+  model.rf <- randomForest(Sales ~ ., data = Carseats, subset = train)
+  
+  mse[i] <- mean((Carseats$Sales[-train] - predict(model.rf, data = Carseats[-train,]))^2)
+}
+
+tibble(mse = mse) %>%
+  ggplot(aes(y = mse, fill = "red"))+
+  geom_boxplot(show.legend = F)
+
+mean(mse)
+median(mse)
+```
+
+
+
+```{r}
+train <- sample(nrow(Carseats), 0.7 * nrow(Carseats))
+  
+model.bag <- randomForest(Sales ~ ., data = Carseats, subset = train, importance = T)
+
+importance(model.bag)
+varImpPlot(model.bag)
+```
+
+
+```{r}
+
+mse <- list()
+
+result <- vector(length = 10)
+
+for(i in 1:10){
+  
+  for(j in 1:10){
+  
+  train <- sample(nrow(Carseats), 0.7 * nrow(Carseats))
+    
+  model <- randomForest(Sales ~ ., data = Carseats, subset = train, mtry = i)
+  
+  pred <- predict(model, Carseats[-train,])
+  
+  result[j] <- mean((Carseats$Sales[-train] - pred)^2)
+  
+  }
+  mse[[i]] <- result
+}
+
+
+tibble(mtry = as.factor(rep(1:10, each = 10)), mse = unlist(mse)) %>%
+ggplot(aes(mtry, mse, fill = mtry))+
+geom_boxplot()
+```
+
+
+# 9
+
+```{r}
+head(OJ)
+
+colnames(OJ)
+```
+
+## a
+
+```{r}
+train <- sample(nrow(OJ), 800)
+```
+
+
+## b, c
+
+```{r}
+model <- tree(Purchase ~ ., data = OJ, subset = train)
+model
+summary(model)
+```
+
+## d
+
+```{r}
+plot(model)
+text(model, pretty = 0)
+```
+
+
+## e
+
+```{r}
+pred <- predict(model, OJ[-train,], type = "class")
+
+table(OJ$Purchase[-train], pred) -> table
+
+table
+
+1 - sum(diag(table)) / sum(table)
+```
+
+
+## f
+
+```{r}
+model.cv <- cv.tree(model, FUN = prune.misclass)
+
+model.cv
+```
+
+## g, h
+
+```{r}
+plot(model.cv$size, model.cv$dev, type = "b")
+```
+
+
+## i
+
+```{r}
+model.prune <- prune.misclass(model, best = model.cv$size[which.min(model.cv$dev)])
+
+plot(model.prune)
+text(model.prune, pretty = 0)
+```
+
+
+## j
+
+```{r}
+model <- tree(Purchase ~ ., data = OJ)
+
+model.cv <- cv.tree(model, FUN = prune.misclass)
+
+model.prune <- prune.misclass(model, best = 3)
+
+1 - sum(diag(table(OJ$Purchase, predict(model, OJ, type = "class")))) / sum(table(OJ$Purchase, predict(model, OJ, type = "class")))
+
+
+1 - sum(diag(table(OJ$Purchase, predict(model.prune, OJ, type = "class")))) / sum(table(OJ$Purchase, predict(model.prune, OJ, type = "class")))
+
+```
+
+
+
+## k
+
+```{r}
+mse.model <- vector(length = 1000)
+mse.model.prune <- vector(length = 1000)
+
+for(i in 1:1000){
+  train <- sample(nrow(OJ), 0.7 * nrow(OJ))
+  
+  model <- tree(Purchase ~ ., data = OJ, subset = train)
+  
+  cv.tree(model) -> cv.model
+  
+  model.prune <- prune.tree(model, best = cv.model$size[which.min(cv.model$dev)])
+  
+  mse.model[i] <- 1 - sum(diag(table(OJ$Purchase[-train], predict(model, OJ[-train,], type = "class")))) / sum(table(OJ$Purchase[-train], predict(model, OJ[-train,], type = "class"))) 
+  
+  mse.model.prune[i] <- 1 - sum(diag(table(OJ$Purchase[-train], predict(model.prune, OJ[-train,], type = "class")))) / sum(table(OJ$Purchase[-train], predict(model.prune, OJ[-train,], type = "class"))) 
+}
+
+tibble(mse.model = mse.model, mse.model.prune = mse.model.prune) %>%
+  gather("val", "var", mse.model, mse.model.prune) %>%
+  ggplot(aes(val, var, fill = val))+
+  geom_boxplot()
+
+mean(mse.model)
+median(mse.model)
+
+mean(mse.model.prune)
+median(mse.model.prune)
+```
+
+
+# 10
+
+```{r}
+head(Hitters)
+```
+
+## a
+
+```{r}
+data <- Hitters %>% filter(!is.na(Salary)) %>% mutate(Salary = log(Salary))
+
+head(data)
+```
+
+
+## b
+
+```{r}
+train <- sample(nrow(data), 200)
+```
+
+
+## c
+
+```{r}
+mse.train <- vector(length = 500)
+
+shrinkage <- seq(0.1, 1, length.out = 500)
+
+for(i in 1:500){
+  
+  model <- gbm(Salary ~ ., data = data[train,], n.trees = 1000, distribution = "gaussian", shrinkage = shrinkage[i])
+  
+  mse.train[i] <- mean((data$Salary[train] - predict(model, newdata = data[train,], n.trees = 1000))^2)
+}
+
+tibble(shrinkage = shrinkage, mse.train = mse.train) %>% 
+  ggplot(aes(shrinkage, mse.train))+
+  geom_line()
+```
+
+
+## d
+
+```{r}
+mse.train <- vector(length = 500)
+
+shrinkage <- seq(0.1, 1, length.out = 500)
+
+for(i in 1:500){
+  
+  model <- gbm(Salary ~ ., data = data[train,], n.trees = 1000, distribution = "gaussian", shrinkage = shrinkage[i])
+  
+  mse.train[i] <- mean((data$Salary[-train] - predict(model, newdata = data[-train,], n.trees = 1000))^2)
+}
+
+tibble(shrinkage = shrinkage, mse.train = mse.train) %>% 
+  ggplot(aes(shrinkage, mse.train))+
+  geom_line()
+```
+
+```{r}
+glimpse(data)
+```
+
+
+## e
+
+```{r}
+mse.lin <- vector(length = 100)
+mse.glm <- vector(length = 100)
+mse.boost <- vector(length = 100)
+
+for(i in 1:100){
+  train <- sample(nrow(data), 200)
+  
+  model.lin <- lm(Salary ~ ., data = data, subset = train)
+  
+  model.glm <- glm(Salary ~ lo(AtBat, 3) + lo(Hits, 3) + lo(HmRun, 3) + lo(Runs, 3) + lo(RBI, 3) +
+                   lo(Walks, 3) + lo(Years, 3) + lo(CAtBat, 3) + lo(CHits, 3) + lo(CHmRun, 3) + 
+                   lo(CRuns, 3) + lo(CRBI, 3) + lo(CWalks, 3) + League + Division + lo(PutOuts) + 
+                   lo(Assists, 3) + lo(Salary, 3) + NewLeague, data = data, subset = train)
+  
+  model.boost <- gbm(Salary ~ ., data = data[train,], distribution = "gaussian")
+  
+  mse.lin[i] <- mean((data$Salary[-train] - predict(model.lin, newdata = data[-train,]))^2)
+  mse.glm[i] <- mean((data$Salary[-train] - predict(model.glm, newdata = data[-train,]))^2)
+  mse.boost[i] <- mean((data$Salary[-train] - predict(model.boost, newdata = data[-train,], n.trees = 1000))^2)
+}
+
+tibble(mse.lin = mse.lin, mse.glm = mse.glm, mse.boost = mse.boost) %>%
+  gather("mse", "val", mse.lin, mse.glm, mse.boost) %>%
+  ggplot(aes(mse, val, fill = mse))+
+  geom_boxplot()
+
+boxplot(mse.glm)
+```
+
+
+## f
+
+```{r}
+model <- gbm(Salary ~ ., data = data, distribution = "gaussian")
+
+summary(model)
+
+
+```
+
+
+## g
+
+```{r}
+
+mse.bagg <- vector(length = 100)
+mse.boost <- vector(length = 100)
+
+for(i in 1:100){
+  train <- sample(nrow(data), 200)
+  
+  model.bagg <- randomForest(Salary ~ ., data = data, mtry = ncol(data) - 1)
+  
+  model.boost <- gbm(Salary ~ ., data = data[train,], distribution = "gaussian")
+  
+
+  mse.bagg[i] <- mean((data$Salary[-train] - predict(model.bagg, newdata = data[-train,]))^2)
+  mse.boost[i] <- mean((data$Salary[-train] - predict(model.boost, newdata = data[-train,], n.trees = 1000))^2)
+}
+
+tibble(mse.bagg = mse.bagg, mse.boost = mse.boost) %>%
+  gather("mse", "val", mse.bagg, mse.boost) %>%
+  ggplot(aes(mse, val, fill = mse))+
+  geom_boxplot()
+
+```
+
+
+# 11
+
+```{r}
+head(Caravan)
+```
+
+```{r}
+summary(Caravan)
+```
+
+
+## a
+
+```{r}
+train <- sample(nrow(Caravan), 1000)
+```
+
+
+## b
+
+```{r}
+model.boost <- gbm(ifelse(Purchase == "Yes", 1, 0) ~ ., data = Caravan[train,], n.trees = 1000, shrinkage = 0.01)
+
+summary(model)
+```
+
+
+## c
+
+
+```{r}
+table.boost <- table(Caravan$Purchase[-train], ifelse(predict(model.boost, Caravan[-train,], n.trees = 1000, type = "response") > 0.2, "Yes", "No"))
+table.boost
+```
+
+
+```{r}
+model.log <- glm(ifelse(Purchase == "Yes", 1, 0) ~ ., data = Caravan[train,])
+
+table.log <- table(Caravan$Purchase[-train], ifelse(predict(model.log, Caravan[-train,], type = "response") > 0.2, "Yes", "No"))
+table.log
+```
+
+```{r}
+model.knn <- knn(Caravan[train, -86], Caravan[-train, - 86], Caravan$Purchase[train], k = 1)
+
+table.knn <- table(Caravan$Purchase[-train], model.knn)
+table.knn
+```
+
+
+# 12
+
+```{r}
+head(Boston)
+summary(Boston)
+```
+
+```{r}
+mse.tree <- vector(length = 50)
+mse.boost <- vector(length = 50)
+mse.bagg <- vector(length = 50)
+mse.randomf <- vector(length = 50)
+mse.lin <- vector(length = 50)
+mse.gam <- vector(length = 50)
+
+for(i in 1:50){
+
+index <- sample(nrow(Boston), 0.7 * nrow(Boston))
+
+train <- Boston[index,]
+test <- Boston[-index,]
+
+model.tree <- tree(medv ~ ., data = train)
+model.boost <- gbm(medv ~ ., data = train, distribution = "gaussian", n.trees = 1000, shrinkage = 0.01)
+model.bagg <- randomForest(medv ~ ., data = train, mtry = ncol(train) - 1, ntree = 400)
+model.randomf <- randomForest(medv ~ ., data = train, ntree = 400)
+model.lin <- lm(medv ~ ., data = train)
+model.gam <- gam(medv ~ lo(lstat) + lo(black) + lo(ptratio) + 
+                        lo(tax) + rad + lo(dis) + lo(age) + 
+                        lo(rm) + lo(nox) + chas + lo(indus) + 
+                        lo(zn) + lo(crim), data = train)
+
+
+mse.tree[i] <- mean((test$medv - predict(model.tree, test))^2)
+mse.boost[i] <- mean((test$medv - predict(model.boost, test, n.trees = 1000))^2)
+mse.bagg[i] <- mean((test$medv - predict(model.bagg, test))^2)
+mse.randomf[i] <- mean((test$medv - predict(model.randomf, test))^2)
+mse.lin[i] <- mean((test$medv - predict(model.lin, test))^2)
+mse.gam[i] <- mean((test$medv - predict(model.gam, test))^2)
+  
+}
+
+tibble(mse.boost, mse.bagg, mse.randomf, mse.lin, mse.gam, mse.tree) %>%
+  gather("var", "val", mse.tree, mse.boost, mse.bagg, mse.randomf, mse.lin, mse.gam) %>%
+  ggplot(aes(var, val, fill = var))+
+  geom_boxplot()
+
+```
