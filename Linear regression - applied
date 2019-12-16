@@ -1,0 +1,540 @@
+---
+title: "Linear regression - applied"
+author: "Wiktor Lamch"
+date: "1 12 2019"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(tidyverse)
+library(ISLR)
+library(MASS)
+library(GGally)
+library(ggthemes)
+library(modelr)
+```
+
+
+# 8
+
+```{r}
+head(Auto)
+```
+
+```{r}
+summary(Auto)
+```
+
+
+
+## a
+
+```{r}
+lm.fit <- lm(data = Auto, mpg ~ horsepower)
+
+summary(lm.fit)
+```
+
+### I, II, III
+
+```{r}
+Auto %>% ggplot(aes(horsepower, mpg))+
+  geom_point()+
+  theme_economist()+
+  xlab("horsepower")+
+  ylab("mpg")
+```
+
+### It's not appropriate to use pearson measure because correlation between mpg and horsepower isn't linear. From above plot simply we can see that correlation is strong and non linear.
+
+```{r}
+cor(Auto$mpg, Auto$horsepower)
+```
+
+### IV
+
+```{r}
+predict(lm.fit, tibble(horsepower = 98))
+
+predict(lm.fit, tibble(horsepower = 98), interval = "confidence")
+
+predict(lm.fit, tibble(horsepower = 98), interval = "prediction")
+```
+
+
+## b
+
+```{r}
+Auto %>% add_predictions(lm.fit) %>%
+  ggplot(aes(x = horsepower, y = mpg))+
+  geom_point()+
+  geom_line(aes(y = pred), col = "red", lwd = 1.5)+
+  theme_economist_white()
+```
+
+```{r}
+plot(lm.fit)
+```
+
+#### We can see that residuals aren't randomly display on Residuals vs Fitted plot. This is evidence that relationship between mpg and horsepower is non linear.
+
+```{r}
+lm.fit2 <- lm(data = Auto, mpg ~ poly(horsepower, 2))
+
+Auto %>% add_predictions(lm.fit2) %>%
+  ggplot(aes(x = horsepower, y = mpg))+
+  geom_point()+
+  geom_line(aes(y = pred), col = "red", lwd = 1.5)+
+  theme_economist_white() 
+```
+
+
+```{r}
+plot(lm.fit2)
+```
+
+
+# 9
+
+
+## a
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+Auto[,-ncol(Auto)] %>% ggpairs()
+```
+
+
+## b
+
+```{r}
+cor(Auto[,-ncol(Auto)])
+```
+
+
+## c
+
+```{r}
+lm.fit <- lm(data = Auto, mpg ~ . - name)
+summary(lm.fit)
+```
+
+
+## d
+
+```{r}
+plot(lm.fit)
+```
+
+
+## e
+
+```{r}
+summary(lm(data = Auto, mpg ~ displacement*horsepower))
+```
+
+
+## f
+
+```{r}
+lm.lin <- lm(data = Auto, mpg ~ horsepower)
+lm.log <- lm(data = Auto, mpg ~ log(horsepower))
+lm.root <- lm(data = Auto, mpg ~ sqrt(horsepower))
+lm.power <- lm(data = Auto, mpg ~ I(horsepower^2))
+
+Auto %>% add_predictions(lm.lin, "lin") %>% add_predictions(lm.log, "log") %>%
+  add_predictions(lm.root, "root") %>% add_predictions(lm.power, "power") %>%
+  dplyr::select(mpg, horsepower, lin, log, root, power) %>%
+  gather("model", "pred", lin:power) %>%
+  ggplot(aes(y = mpg, x = horsepower))+
+  geom_point()+
+  geom_line(aes(y = pred, color = model), lwd = 1)+
+  theme_economist_white()
+```
+
+#### From above plot we can see that the best is logarithmic model
+
+
+# 10
+
+```{r}
+head(Carseats)
+```
+
+
+## a, b, d
+
+```{r}
+lm.fit <- lm(data = Carseats, Sales ~ Price + Urban + US)
+
+summary(lm.fit)
+```
+
+
+## e
+
+```{r}
+lm.fit2 <- lm(data = Carseats, Sales ~ Price + US)
+
+summary(lm.fit2)
+```
+
+
+## f
+
+```{r}
+summary(lm.fit)$adj.r.squared
+
+summary(lm.fit2)$adj.r.squared
+```
+
+## g
+
+```{r}
+predict(lm.fit2, Carseats, interval = "confidence") %>% head()
+```
+
+
+## h
+
+```{r}
+plot(lm.fit2)
+```
+
+
+
+# 11
+
+```{r}
+set.seed(1)
+x = rnorm(100)
+y = 2 * x + rnorm(100)
+
+```
+
+
+## a
+
+```{r}
+summary(lm(y ~ x + 0))
+```
+
+## b
+
+```{r}
+summary(lm(x ~ y + 0))
+```
+
+## c
+
+```{r}
+par(mfrow = c(1, 2))
+
+plot(x, y)
+plot(y, x)
+
+cor(x, y)
+```
+
+
+## d
+
+```{r}
+lm.fit <- lm(y ~ x + 0)
+
+sqrt(sum((y - predict(lm.fit, list(x = x)))^2) / ((length(x) - 1) * sum(x^2))) -> se.beta
+
+lm.fit$coefficients[1] / se.beta
+```
+
+```{r}
+nominator <- sqrt(length(x) - 1) * sum(x * y)
+denominator <- sqrt(sum(x^2) * sum(y^2) - sum(x * y)^2)
+
+nominator / denominator
+```
+
+
+## e
+
+```{r}
+lm.fit <- lm(x ~ y + 0)
+
+sqrt(sum((x - predict(lm.fit, list(y = y)))^2) / ((length(y) - 1) * sum(y^2))) -> se.beta
+
+lm.fit$coefficients[1] / se.beta
+```
+
+```{r}
+nominator <- sqrt(length(y) - 1) * sum(y * x)
+denominator <- sqrt(sum(y^2) * sum(x^2) - sum(y * x)^2)
+
+nominator / denominator
+```
+
+
+```{r}
+summary(lm(y ~ x))
+summary(lm(x ~ y))
+```
+
+
+# 12
+
+## b
+
+```{r}
+set.seed(1)
+x <- 1:100
+y <- 3 * x + rnorm(100)
+```
+
+
+```{r}
+lm.fit1 <- lm(y ~ x + 0)
+lm.fit2 <- lm(x ~ y + 0)
+
+summary(lm.fit1)
+summary(lm.fit2)
+```
+
+
+## c
+
+```{r}
+x <- 50:200
+y <- 200:50
+```
+
+```{r}
+lm.fit1 <- lm(y ~ x + 0)
+lm.fit2 <- lm(x ~ y + 0)
+
+summary(lm.fit1)
+summary(lm.fit2)
+```
+
+
+# 13
+
+## a
+
+```{r}
+x <- rnorm(100)
+```
+
+## b
+
+```{r}
+eps <- rnorm(100, sd = 0.25)
+```
+
+
+## c
+
+```{r}
+y = -1 + 0.5 * x + eps
+```
+
+
+## d
+
+```{r}
+plot(x, y)
+```
+
+### Linear strong correlation
+
+
+## e
+
+```{r}
+lm.fit <- lm(y ~ x)
+
+coefficients(lm.fit)
+```
+
+### Estimates coefficients are closely to real. Beta0 overestimate and beta1 underestimate real coefficients.
+
+
+## f
+
+```{r}
+tibble(y = y, x = x) %>% mutate(real.pred = -1 + 0.5 * x) %>% add_predictions(lm.fit) %>%
+  gather("model", "values", real.pred, pred) %>%
+  ggplot(aes(x, y))+
+  geom_point()+
+  geom_line(aes(y = values, color = model), lwd = 0.8)
+```
+
+
+## g
+
+```{r}
+lm.fit2 <- lm(y ~ poly(x, 2))
+
+anova(lm.fit, lm.fit2)
+```
+
+### Is not evidence that polynomial model is better than linear
+
+
+## j
+
+```{r}
+x <- rnorm(100)
+y = -1 + 0.5 * x + eps
+eps <- rnorm(100, sd = 0.25)
+
+lm.fit <- lm(y ~ x)
+
+confint(lm.fit)
+```
+
+
+```{r}
+x <- rnorm(100)
+y = -1 + 0.5 * x + eps
+eps <- rnorm(100, sd = 1)
+
+lm.fit <- lm(y ~ x)
+
+confint(lm.fit)
+```
+
+
+```{r}
+x <- rnorm(100)
+y = -1 + 0.5 * x + eps
+eps <- rnorm(100, sd = 2)
+
+lm.fit <- lm(y ~ x)
+
+confint(lm.fit)
+```
+
+
+# 14
+
+## a
+
+```{r}
+set.seed(1)
+x1 = runif(100)
+x2 = 0.5 * x1 + rnorm(100) / 10
+y = 2 + 2 * x1 + 0.3 * x2 + rnorm(100)
+```
+
+
+## b
+
+```{r}
+cor(x1, x2)
+plot(x1, x2)
+```
+
+
+## c
+
+```{r}
+lm.fit <- lm(y ~ x1 + x2)
+summary(lm.fit)
+```
+
+
+## d
+
+```{r}
+lm.fit <- lm(y ~ x1)
+summary(lm.fit)
+```
+
+
+## e
+
+```{r}
+lm.fit <- lm(y ~ x2)
+summary(lm.fit)
+```
+
+
+## g
+
+```{r}
+x1 = c(x1, 0.1)
+x2 = c(x2, 0.8)
+y = c(y, 6)
+```
+
+
+```{r}
+summary(lm(y ~ x1 + x2))
+
+plot(lm(y ~ x1 + x2))
+```
+
+
+```{r}
+summary(lm(y ~ x1))
+
+plot(lm(y ~ x1))
+```
+
+
+```{r}
+summary(lm(y ~ x2))
+
+plot(lm(y ~ x2))
+```
+
+
+# 15
+
+
+## a 
+
+```{r}
+head(Boston)
+```
+
+```{r}
+models <- list()
+
+for(i in 2:14){
+  Boston[,c(1, i)] %>% lm(data = ., crim ~ .) -> models[[i-1]]
+}
+  
+```
+
+
+```{r}
+map(models, summary)
+```
+
+## b
+
+```{r}
+summary(lm(data = Boston, crim ~ .))
+```
+
+
+## d
+
+```{r}
+
+models <- list()
+
+for(i in 2:14){
+  lm(Boston[,1] ~ Boston[,i] + I(Boston[,i]^2) + I(Boston[,i]^3)) -> models[[i-1]]
+}
+  
+```
+
+
+```{r}
+map(models, summary)
+```
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+Boston %>% ggpairs()
+```
