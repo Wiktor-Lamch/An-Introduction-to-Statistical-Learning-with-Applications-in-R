@@ -1,0 +1,277 @@
+---
+title: "5.4 Exercises - Applied"
+output: html_document
+---
+
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(tidyverse)
+library(boot)
+library(MASS)
+library(stats)
+library(modelr)
+library(MASS)
+```
+
+
+# 5.
+
+```{r}
+head(Default)
+```
+
+## a
+
+```{r}
+logreg_model <- glm(data = Default, default ~ income + balance, family = binomial)
+
+summary(logreg_model)
+```
+
+## b, c, d
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+
+test_error <- vector(length = 1000)
+test_error_student <- vector(length = 1000)
+
+for(i in 1:1000){
+  train <- sample(nrow(Default), size = floor(nrow(Default) * 0.6), replace = F)
+  
+  logreg_model <- glm(data = Default[train,], default ~ income + balance, family = binomial)
+  
+  logreg_model_student <- glm(data = Default[train,], default ~ income + balance + student, family = binomial)
+  
+  test_error[i] <- 1 - mean(ifelse(predict(logreg_model, Default[-train,], type = "response") > 0.5, "Yes", "No") == Default$default[-train])
+  
+  test_error_student[i] <- 1 - mean(ifelse(predict(logreg_model_student, Default[-train,], type = "response") > 0.5, "Yes", "No") == Default$default[-train])
+}
+
+cbind(test_error, test_error_student) %>% as_tibble() %>% 
+  gather("var", "val", test_error, test_error_student) -> result
+
+result %>% group_by(var) %>% summarise(mean = mean(val), sd = sd(val))
+
+result %>% ggplot(aes(y = val, fill = var))+
+  geom_boxplot()
+
+result %>% ggplot(aes(val, color = var))+
+  geom_freqpoly()
+```
+
+
+# 6.
+
+## a
+
+```{r}
+summary(glm(data = Default, default ~ income + balance, family = binomial))
+```
+
+## b
+
+```{r}
+boot.fn <- function(data, index) coef(glm(data = data[index,], default ~ income + balance, family = binomial))
+```
+
+
+## c
+
+```{r}
+boot(Default, boot.fn, 1000)
+```
+
+# 7.
+
+```{r}
+head(Weekly)
+```
+
+## a
+
+```{r}
+summary(glm(data = Weekly, Direction ~ Lag1 + Lag2, family = binomial))
+```
+
+## b
+
+```{r}
+summary(glm(data = Weekly[-1,], Direction ~ Lag1 + Lag2, family = binomial))
+```
+
+## c
+
+```{r}
+model <- glm(data = Weekly[-1,], Direction ~ Lag1 + Lag2, family = binomial)
+
+Weekly$Direction[1]
+ifelse(predict(model, Weekly[1,], type = "response") > 0.5, "Up", "Down")
+```
+
+
+## d, e
+
+```{r}
+error <- vector(length = nrow(Weekly))
+
+for(i in 1:nrow(Weekly)){
+  model <- glm(data = Weekly[-i,], Direction ~ Lag1 + Lag2, family = binomial)
+  
+  error[i] <- Weekly$Direction[i] != ifelse(predict(model, Weekly[i,], type = "response") > 0.5, "Up", "Down")
+}
+mean(error)
+```
+
+
+# 8.
+
+## a, b
+
+```{r}
+set.seed(1)
+x=rnorm(100)
+y=x-2*x^2+rnorm (100)
+
+data <- tibble(y = y, x = x)
+
+head(data)
+
+data %>% add_predictions(model) %>% ggplot(aes(x, y))+
+  geom_point()+
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = F, col = "red")
+
+
+```
+
+
+## c, d, e
+
+```{r}
+delta <- vector(length = 4)
+
+for(i in 1:4){
+model <- glm(data = data, y ~ poly(x, i))
+cv.glm(data, model)$delta[1] -> delta[i]
+}
+
+cbind(poly = 1:4, delta) %>% as_tibble() %>% ggplot(aes(poly, delta)) + geom_point()
+
+cbind(poly = 1:4, delta) %>% as_tibble() %>% arrange(delta)
+```
+
+## f
+
+```{r}
+summary(glm(data = data, y ~ poly(x, 1)))
+summary(glm(data = data, y ~ poly(x, 2)))
+summary(glm(data = data, y ~ poly(x, 3)))
+summary(glm(data = data, y ~ poly(x, 4)))
+```
+
+
+# 9.
+
+```{r}
+head(Boston)
+```
+
+## a
+
+```{r}
+mean(Boston$medv)
+```
+
+## b
+
+```{r}
+mean(Boston$medv)
+sd(Boston$medv) / sqrt(nrow(Boston) - 1)
+```
+
+## c 1.
+
+```{r}
+medv.fn <- function(data, index) return(mean(data$medv[index]))
+
+boot(Boston, medv.fn, 50000)
+```
+
+## d
+
+```{r}
+est.medv <- vector(length = 100000)
+
+for(i in 1:100000){
+  est.medv[i] <- mean(Boston$medv[sample(nrow(Boston), nrow(Boston), replace = T)])
+}
+
+hist(est.medv)
+abline(v = mean(est.medv), col = "blue")
+abline(v = mean(Boston$medv), col = "red")
+
+mean(est.medv)
+mean(est.medv) - 2 * sd(est.medv)
+mean(est.medv) + 2 * sd(est.medv)
+
+t.test(Boston$medv)
+```
+
+
+## e
+
+```{r}
+median(median(Boston$medv))
+```
+
+
+## f 1.
+
+```{r}
+medv.fn <- function(data, index) return(median(data$medv[index]))
+
+boot(Boston, medv.fn, 50000)
+```
+
+
+## f 2.
+
+```{r}
+est.medv <- vector(length = 100000)
+
+for(i in 1:100000){
+  est.medv[i] <- median(Boston$medv[sample(nrow(Boston), nrow(Boston), replace = T)])
+}
+
+hist(est.medv)
+abline(v = mean(est.medv), col = "blue")
+abline(v = median(Boston$medv), col = "red")
+```
+
+
+## g
+
+```{r}
+quantile(Boston$medv, probs = 0.1)
+```
+
+## h 1.
+
+```{r}
+medv.fn <- function(data, index) return(quantile(data$medv[index], probs = 0.1))
+
+boot(Boston, medv.fn, 10000)
+```
+
+## h 2.
+
+```{r}
+est.medv <- vector(length = 100000)
+
+for(i in 1:100000){
+  est.medv[i] <- quantile(Boston$medv[sample(nrow(Boston), nrow(Boston), replace = T)], probs = 0.1)
+}
+
+hist(est.medv)
+abline(v = mean(est.medv), col = "blue")
+abline(v = quantile(Boston$medv, probs = 0.1), col = "red")
+```
