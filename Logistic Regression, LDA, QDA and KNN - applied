@@ -1,0 +1,720 @@
+---
+title: "Logistic Regression LDA QDA and KNN - applied"
+author: "Wiktor Lamch"
+date: "21 12 2019"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(tidyverse)
+library(ISLR)
+library(boot)
+library(GGally)
+library(MASS)
+library(class)
+```
+
+
+# 10
+
+```{r}
+head(Weekly)
+```
+
+
+
+## a
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+Weekly %>% ggpairs()
+```
+
+```{r}
+summary(Weekly)
+```
+
+```{r}
+Weekly %>% ggplot(aes(Year, Volume))+
+  geom_point()
+
+
+Weekly %>% group_by(Year) %>% transmute(Volume = mean(Volume)) %>%
+  ungroup(Year) %>%
+  ggplot(aes(Year, Volume))+
+  geom_line()
+```
+
+
+## b
+
+```{r}
+contrasts(Weekly$Direction)
+```
+
+
+```{r}
+logistic.model <- glm(data = Weekly, Direction ~ Lag1 + Lag2 + Lag3 + Lag4 + Lag5 + Volume,
+                      family = "binomial")
+
+summary(logistic.model)
+```
+
+### In this set of predictors significant is only Lag2.
+
+
+## c
+
+```{r}
+plot(Weekly$Direction)
+```
+
+### In this case we use treshold equal 0.5
+
+```{r}
+conf.mat <- table(real = Weekly$Direction, 
+                  predict = ifelse(predict(logistic.model, Weekly, type = "response") > 0.5, "Up", "Down"))
+conf.mat
+
+sum(diag(conf.mat)) / sum(conf.mat)
+```
+
+### We have four values in confusion matrix (true positives - 557, false positives - 430, true negatives - 54 and false negatives - 48). Logistic regression model truly predict a lot of up but a lot of down are predicted incorrectly. This causes that this model is useless.
+
+
+```{r}
+hist(predict(logistic.model, Weekly, type = "response"), col= "blue", breaks = 100,
+     xlab = "probability", main = "")
+abline(v = mean(predict(logistic.model, Weekly)), lwd = 2)
+```
+
+
+```{r}
+tibble(probabilities = predict(logistic.model, Weekly, type = "response"),
+       direction = Weekly$Direction) %>%
+  ggplot(aes(y = probabilities, fill = direction))+
+  geom_boxplot()
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+tibble(probabilities = predict(logistic.model, Weekly, type = "response"),
+       direction = Weekly$Direction) %>%
+  ggplot(aes(probabilities, color = direction))+
+  geom_density()
+```
+
+
+```{r}
+accuracy <- vector(length = 100)
+treshold <- seq(0.01, 0.99, length.out = 100)
+
+for(i in 1:100){
+  
+  conf.mat <- table(real = Weekly$Direction, 
+                  predict = ifelse(predict(logistic.model, Weekly, type = "response") > treshold[i], "Up", "Down"))
+
+sum(diag(conf.mat)) / sum(conf.mat) -> accuracy[i]
+  
+}
+
+tibble(treshold = treshold, accuracy = accuracy) %>% ggplot(aes(treshold, accuracy))+
+  geom_line()
+max(accuracy)
+treshold[which.max(accuracy)]
+```
+
+
+
+## d
+
+
+```{r}
+train <- Weekly %>% filter(Year <= 2008)
+test <- Weekly %>% filter(Year > 2008)
+```
+
+
+
+
+```{r}
+accuracy <- vector(length = 500)
+treshold <- seq(0.01, 0.99, length.out = 500)
+
+for(i in 1:500){
+  
+  conf.mat <- table(real = test$Direction, 
+                  predict = ifelse(predict(logistic.model, test, type = "response") > treshold[i], "Up", "Down"))
+
+sum(diag(conf.mat)) / sum(conf.mat) -> accuracy[i]
+  
+}
+
+tibble(treshold = treshold, accuracy = accuracy) %>% ggplot(aes(treshold, accuracy))+
+  geom_line()
+max(accuracy)
+treshold[which.max(accuracy)]
+```
+
+
+```{r}
+logistic.model <- glm(data = train, Direction ~ Lag2, family = "binomial")
+
+prediction <- ifelse(predict(logistic.model, test, type = "response") > treshold[which.max(accuracy)], "Up", "Down")
+
+conf.mat <- table(direction = test$Direction, pred = prediction)
+
+conf.mat
+sum(diag(conf.mat)) / sum(conf.mat)
+1-sum(diag(conf.mat)) / sum(conf.mat)
+```
+
+
+## e
+
+```{r}
+lda.model <- lda(Direction ∼ Lag2, data = train)
+
+conf.mat.lda <- table(direction = test$Direction, pred = predict(lda.model, test)$class)
+
+conf.mat.lda
+sum(diag(conf.mat.lda)) / sum(conf.mat.lda)
+1-sum(diag(conf.mat.lda)) / sum(conf.mat.lda)
+```
+
+
+## f
+
+```{r}
+qda.model <- qda(Direction ∼ Lag2, data = train)
+
+conf.mat.qda <- table(direction = test$Direction, pred = predict(qda.model, test)$class)
+
+conf.mat.qda
+sum(diag(conf.mat.qda)) / sum(conf.mat.qda)
+1-sum(diag(conf.mat.qda)) / sum(conf.mat.qda)
+```
+
+
+## g
+
+```{r}
+knn.pred <- knn(tibble(train$Lag2), tibble(test$Lag2), train$Direction, k = 1)
+
+conf.mat.knn <- table(direction = test$Direction, pred = knn.pred)
+
+conf.mat.knn
+sum(diag(conf.mat.knn)) / sum(conf.mat.knn)
+1-sum(diag(conf.mat.knn)) / sum(conf.mat.knn)
+```
+
+
+## h
+
+```{r}
+tibble(accuracy = c(
+  sum(diag(conf.mat)) / sum(conf.mat),
+  sum(diag(conf.mat.lda)) / sum(conf.mat.lda),
+  sum(diag(conf.mat.qda)) / sum(conf.mat.qda),
+  sum(diag(conf.mat.knn)) / sum(conf.mat.knn)
+), model = c("logistic regression", "lda", "qda", "knn")) %>% ggplot(aes(x = model, y = accuracy, fill = model))+
+  geom_bar(stat = "identity")
+```
+
+## i
+
+```{r}
+accuracy <- vector(length = 300)
+
+for(i in 1:300){
+pred <- knn(tibble(train$Lag2), tibble(test$Lag2), train$Direction, k = i)
+
+table <- table(direction = test$Direction, pred = pred)
+
+sum(diag(table)) / sum(table) -> accuracy[i]
+
+}
+
+tibble(k = 1:300, accuracy = accuracy) %>%
+  ggplot(aes(k, accuracy))+
+  geom_point()
+
+which.max(accuracy)
+accuracy[which.max(accuracy)]
+```
+
+
+```{r}
+tibble(accuracy = c(
+  sum(diag(conf.mat)) / sum(conf.mat),
+  sum(diag(conf.mat.lda)) / sum(conf.mat.lda),
+  sum(diag(conf.mat.qda)) / sum(conf.mat.qda),
+  sum(diag(conf.mat.knn)) / sum(conf.mat.knn),
+  accuracy[which.max(accuracy)]
+), model = c("logistic regression", "lda", "qda", "knn", "knn.150")) %>% ggplot(aes(x = model, y = accuracy, fill = model))+
+  geom_bar(stat = "identity")
+```
+
+
+## 11
+
+```{r}
+head(Auto)
+```
+
+
+### a
+
+```{r}
+data <- Auto %>% mutate(mpg01 = ifelse(mpg > median(mpg), 1, 0)) %>%
+  mutate(mpg01 = as.factor(mpg01)) %>% dplyr::select(-mpg)
+
+head(data)
+```
+
+
+### b
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+data %>% dplyr::select(-name) %>%ggpairs()
+```
+
+
+## c
+
+### In this excercise we will use cross validation sampling approach to verify models
+
+
+## d
+
+```{r}
+lda.test.error <- vector(length = 500)
+
+for(i in 1:500){
+  
+train <- sample(1:nrow(data), 0.7 * nrow(data))
+  
+  model <- lda(data = data[train,], mpg01 ~ cylinders + displacement + horsepower + weight)
+  
+  pred = predict(model, data[-train,])$class
+  
+  result <- table(data[-train,]$mpg01, pred)
+  
+  1 - sum(diag(result)) / sum(result) -> lda.test.error[i]
+}
+
+boxplot(lda.test.error)
+```
+
+
+## e
+
+```{r}
+qda.test.error <- vector(length = 500)
+
+for(i in 1:500){
+  
+train <- sample(1:nrow(data), 0.7 * nrow(data))
+  
+  model <- qda(data = data[train,], mpg01 ~ cylinders + displacement + horsepower + weight)
+  
+  pred = predict(model, data[-train,])$class
+  
+  result <- table(data[-train,]$mpg01, pred)
+  
+  1 - sum(diag(result)) / sum(result) -> qda.test.error[i]
+}
+
+boxplot(qda.test.error)
+```
+
+
+## f
+
+
+```{r}
+model <- glm(data = data, mpg01 ~ cylinders + displacement + horsepower + weight, family = "binomial")
+
+accuracy <- vector(length = 500)
+treshold <- seq(0.01, 0.99, length.out = 500)
+
+for(i in 1:500){
+  
+  conf.mat <- table(real = data$mpg01, 
+                  predict = ifelse(predict(model, data, type = "response") > treshold[i], "1", "0"))
+
+sum(diag(conf.mat)) / sum(conf.mat) -> accuracy[i]
+  
+}
+
+tibble(treshold = treshold, accuracy = accuracy) %>% ggplot(aes(treshold, accuracy))+
+  geom_line()
+max(accuracy)
+treshold[which.max(accuracy)]
+```
+
+
+```{r}
+logistic.test.error <- vector(length = 500)
+
+for(i in 1:500){
+  
+train <- sample(1:nrow(data), 0.7 * nrow(data))
+  
+  model <- glm(data = data[train,], mpg01 ~ cylinders + displacement + horsepower + weight, 
+               family = "binomial")
+  
+  pred = ifelse(predict(model, data[-train,], type = "response") > treshold[which.max(accuracy)], "1", "0")
+  
+  result <- table(data[-train,]$mpg01, pred)
+  
+  1 - sum(diag(result)) / sum(result) -> logistic.test.error[i]
+}
+
+boxplot(logistic.test.error)
+```
+
+
+## g
+
+```{r}
+accuracy <- vector(length = 80)
+
+
+for(j in 1:80){
+  
+results <- vector(length = 200)
+
+  for(i in 1:200){
+
+  train <- sample(1:nrow(data), 0.7 * nrow(data))
+
+  pred <- knn(dplyr::select(data[train,], cylinders, displacement, horsepower, weight), 
+            dplyr::select(data[-train,], cylinders, displacement, horsepower, weight), 
+            data[train,]$mpg01, k = j)
+
+  table <- table(data[-train,]$mpg01, pred)
+
+  sum(diag(table)) / sum(table) -> results[i]
+
+  }
+accuracy[j] <- mean(results)
+}
+
+tibble(k = 1:80, accuracy = accuracy) %>%
+  ggplot(aes(k, accuracy))+
+  geom_point()
+
+which.max(accuracy)
+accuracy[which.max(accuracy)]
+```
+
+
+```{r}
+knn.test.error <- vector(length = 500)
+
+for(i in 1:500){
+
+train <- sample(1:nrow(data), 0.7 * nrow(data))
+
+pred <- knn(dplyr::select(data[train,], cylinders, displacement, horsepower, weight), 
+            dplyr::select(data[-train,], cylinders, displacement, horsepower, weight), 
+            data[train,]$mpg01, k = which.max(accuracy))
+
+table <- table(data[-train,]$mpg01, pred)
+
+1 - sum(diag(table)) / sum(table) -> knn.test.error[i]
+
+}
+
+boxplot(knn.test.error)
+```
+
+### Below is comparison created models
+
+```{r}
+tibble(test.error = c(logistic.test.error, lda.test.error, qda.test.error, knn.test.error),
+       model = c(rep("logistic regression", 500), rep("lda", 500), rep("qda", 500),
+                 rep("knn", 500))) %>% mutate(model = as.factor(model)) %>% 
+  ggplot(aes(x = fct_reorder(model, test.error, .fun = mean), y = test.error, fill = model))+
+  geom_boxplot()+
+  xlab("")
+  
+```
+
+
+# 12
+
+## a
+
+```{r}
+Power <- function(x = 0){
+  cat("Raise 2 to the power", x, "is equal to", 2^x, "\n" )
+}
+
+Power(2)
+Power(3)
+```
+
+
+## b
+
+```{r}
+Power2 <- function(x = 1, a = 0){
+  cat("Raise", x, "to the power", a, "is equal to", x^a, "\n" )
+}
+
+Power2(2, 3)
+Power2(4, 13)
+```
+
+
+## c
+
+```{r}
+Power2(10, 3)
+Power2(8, 17)
+Power2(131, 3)
+```
+
+
+## d
+
+```{r}
+Power3 <- function(x = 1, a = 0){
+  return(x^a)
+}
+
+Power3(2, 3)
+Power3(4, 13)
+```
+
+
+
+## e
+
+```{r}
+Power3(1:10, 2)
+```
+
+```{r}
+tibble(x = 1:10, y = Power3(1:10, 2)) %>%
+  ggplot(aes(x = x, y = y))+
+  geom_point()+
+  geom_line()
+```
+
+
+```{r}
+tibble(x = 1:10, y = log(Power3(1:10, 2))) %>%
+  ggplot(aes(x = x, y = y))+
+  geom_point()+
+  geom_line()+
+  ylab("log(y)")
+```
+
+```{r}
+tibble(x = log(1:10), y = log(Power3(1:10, 2))) %>%
+  ggplot(aes(x = x, y = y))+
+  geom_point()+
+  geom_line()+
+  ylab("log(y)")+
+  xlab("log(x)")
+```
+
+
+## f
+
+
+```{r}
+PlotPower <- function(x, a){
+
+library(tidyverse)
+  
+tibble(x = x, y = x^a) %>%
+  ggplot(aes(x = x, y = y))+
+  geom_point()+
+  geom_line()
+}
+
+PlotPower(1:10, 3)
+```
+
+
+# 13
+
+```{r}
+head(Boston)
+```
+
+```{r}
+summary(lm(data = Boston, crim ~ .))
+```
+
+### In this excercise we use very simply approach and use onty variables which have p - value less than 0.05.
+
+
+
+```{r}
+data <- Boston %>% dplyr::select(crim, zn, dis, rad, black, medv) %>%
+  mutate(crim01 = ifelse(crim > median(crim), 1, 0)) %>% mutate(crim01 = as.factor(crim01)) %>%
+  dplyr::select(-crim)
+
+head(data)
+```
+
+
+## Logistic regression
+
+```{r}
+model <- glm(data = data, crim01 ~ zn + dis + rad + black + medv, family = "binomial")
+
+accuracy <- vector(length = 500)
+treshold <- seq(0.01, 0.99, length.out = 500)
+
+for(i in 1:500){
+  
+  conf.mat <- table(real = data$crim01, 
+                  predict = ifelse(predict(model, data, type = "response") > treshold[i], "1", "0"))
+
+sum(diag(conf.mat)) / sum(conf.mat) -> accuracy[i]
+  
+}
+
+tibble(treshold = treshold, accuracy = accuracy) %>% ggplot(aes(treshold, accuracy))+
+  geom_line()
+max(accuracy)
+treshold[which.max(accuracy)]
+```
+
+
+```{r}
+logistic.test.error <- vector(length = 500)
+
+for(i in 1:500){
+  
+train <- sample(1:nrow(data), 0.7 * nrow(data))
+  
+  model <- glm(data = data[train,], crim01 ~ zn + dis + rad + black + medv, family = "binomial")
+  
+  pred = ifelse(predict(model, data[-train,], type = "response") > treshold[which.max(accuracy)], "1", "0")
+  
+  result <- table(data[-train,]$crim01, pred)
+  
+  1 - sum(diag(result)) / sum(result) -> logistic.test.error[i]
+}
+
+boxplot(logistic.test.error)
+```
+
+
+## LDA (Linear Discriminant Analysis)
+
+```{r}
+lda.test.error <- vector(length = 500)
+
+for(i in 1:500){
+  
+train <- sample(1:nrow(data), 0.7 * nrow(data))
+  
+  model <- lda(data = data[train,], crim01 ~ zn + dis + rad + black + medv)
+  
+  pred = predict(model, data[-train,])$class
+  
+  result <- table(data[-train,]$crim01, pred)
+  
+  1 - sum(diag(result)) / sum(result) -> lda.test.error[i]
+}
+
+boxplot(lda.test.error)
+```
+
+
+## QDA (Quadratic Discriminant Analysis)
+
+```{r}
+qda.test.error <- vector(length = 500)
+
+for(i in 1:500){
+  
+train <- sample(1:nrow(data), 0.7 * nrow(data))
+  
+  model <- qda(data = data[train,], crim01 ~ zn + dis + rad + black + medv)
+  
+  pred = predict(model, data[-train,])$class
+  
+  result <- table(data[-train,]$crim01, pred)
+  
+  1 - sum(diag(result)) / sum(result) -> qda.test.error[i]
+}
+
+boxplot(qda.test.error)
+```
+
+
+## KNN (K nearest neighbors)
+
+```{r}
+accuracy <- vector(length = 80)
+
+
+for(j in 1:80){
+  
+results <- vector(length = 200)
+
+  for(i in 1:200){
+
+  train <- sample(1:nrow(data), 0.7 * nrow(data))
+
+  pred <- knn(dplyr::select(data[train,], -crim01), 
+            dplyr::select(data[-train,], -crim01), 
+            data[train,]$crim01, k = j)
+
+  table <- table(data[-train,]$crim01, pred)
+
+  sum(diag(table)) / sum(table) -> results[i]
+
+  }
+accuracy[j] <- mean(results)
+}
+
+tibble(k = 1:80, accuracy = accuracy) %>%
+  ggplot(aes(k, accuracy))+
+  geom_point()
+
+which.max(accuracy)
+accuracy[which.max(accuracy)]
+```
+
+
+```{r}
+knn.test.error <- vector(length = 500)
+
+for(i in 1:500){
+
+train <- sample(1:nrow(data), 0.7 * nrow(data))
+
+pred <- knn(dplyr::select(data[train,], -crim01), 
+            dplyr::select(data[-train,], -crim01), 
+            data[train,]$crim01, k = which.max(accuracy))
+
+table <- table(data[-train,]$crim01, pred)
+
+1 - sum(diag(table)) / sum(table) -> knn.test.error[i]
+
+}
+
+boxplot(knn.test.error)
+```
+
+
+### Models comparison
+
+```{r}
+tibble(test.error = c(logistic.test.error, lda.test.error, qda.test.error, knn.test.error),
+       model = c(rep("logistic regression", 500), rep("lda", 500), rep("qda", 500),
+                 rep("knn", 500))) %>% mutate(model = as.factor(model)) %>% 
+  ggplot(aes(x = fct_reorder(model, test.error, .fun = mean), y = test.error, fill = model))+
+  geom_boxplot()+
+  xlab("")
+  
+```
+
